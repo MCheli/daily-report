@@ -81,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     sp = sub.add_parser("report", help="print the composed daily report")
     sp.add_argument("--sections", nargs="+", default=None)
     sp.add_argument("--check-urls", action="store_true")
+    sp.add_argument("--github-lookback-hours", type=int, default=24 * 7)
     sp.add_argument("--title", default="DAILY REPORT")
 
     args = parser.parse_args(argv)
@@ -98,7 +99,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "styles":
         _cmd_run_example("style_sampler")
     elif args.cmd == "report":
-        report.generate(args.sections, check_urls=args.check_urls, title=args.title)
+        report.generate(
+            args.sections,
+            check_urls=args.check_urls,
+            github_lookback_hours=args.github_lookback_hours,
+            title=args.title,
+        )
     return 0
 
 

@@ -151,6 +151,11 @@ Sources currently shipped:
 
 - `sources/homelab.py` — reads `services.json` from PersonalWebsite,
   optionally does live HEAD checks via `summarize(check_urls=True)`.
+- `sources/github.py` — shells out to the `gh` CLI (uses your existing
+  auth) to pull profile counts, recent activity, open PRs, review queue,
+  and top repos by stars. Tunable lookback via
+  `summarize(lookback_hours=...)` (defaults to 168h / 7 days in the
+  composed report).
 
 Rough pattern for adding GitHub activity, for example:
 
