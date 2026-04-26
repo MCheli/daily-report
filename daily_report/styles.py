@@ -34,19 +34,22 @@ def kicker(p: ReceiptPrinter, text: str) -> None:
 
 
 def section_header(p: ReceiptPrinter, text: str) -> None:
-    """Whitespace, a top `=` divider, the bold title, and a bottom `=` divider.
+    """Centered bold title flanked by `=` characters on both sides.
 
         (blank line)
-        ============================================
-        TITLE
-        ============================================
+        ============= TITLE =============
     """
+    width = p.DIVIDER_WIDTH
+    inner = f" {text} "
+    # Pad with `=` so the line spans the full divider width. Floor on the
+    # left so odd-width remainders go on the right.
+    fill = max(2, width - len(inner))
+    left = "=" * (fill // 2)
+    right = "=" * (fill - fill // 2)
     p.newline()
-    p.divider("=")
     p.set(align="left", bold=True)
-    p.text(f"{text}\n")
+    p.text(left + inner + right + "\n")
     p.set(bold=False)
-    p.divider("=")
 
 
 def divider_decorative(p: ReceiptPrinter, char: str = "*") -> None:
