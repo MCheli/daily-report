@@ -75,9 +75,10 @@ internal-only by default. Add an nginx route or a port publish (see
 
 ## Environment
 
-Add these to `~/83rr-poweredge/.env` (gitignored). Values come from this
-repo's `.env.example`; the maintainer of the daily-report code will provide
-the secrets out of band.
+Add these to `~/83rr-poweredge/.env` (gitignored). The maintainer of
+this repo holds the live values — see **Secrets handoff** below for the
+recommended way to transfer them without exposing the values to the
+deployment agent's prompt or shell history.
 
 ```bash
 # AI summary (Claude Haiku 4.5)
@@ -102,6 +103,53 @@ DAILY_REPORT_API_TOKEN=<pick-a-strong-random-string>
 The container also reads `WEATHER_LOCATION`, `STOCK_TICKER`, and
 `TALLIED_DAYS` if you want to override them — sensible defaults
 (`Ashland,MA`, `PTC`, `7`) are baked in.
+
+## Secrets handoff
+
+The container needs API keys for Anthropic, Tallied, Tasks, Home
+Assistant, the calendar ICS feed, and the bearer token for its own
+`/trigger` endpoint. Three workable patterns, easiest first:
+
+### A. scp the whole bundle (recommended)
+
+The maintainer keeps a local `.env` in the daily-report repo with the
+values. A helper at `scripts/upload-secrets.sh` extracts only the keys
+that daily-report needs and `scp`s them to the homelab — values never
+leave your laptop's filesystem and never enter the deployment agent's
+context.
+
+On the maintainer's workstation:
+
+```bash
+cd ~/repos/daily-report
+./scripts/upload-secrets.sh mcheli@83rr-poweredge.local
+# uploads /tmp/daily-report.env on the homelab (mode 0600)
+```
+
+The script then prints a one-liner the deployment agent can run to merge
+those entries into `~/83rr-poweredge/.env` (in-place, leaving every
+unrelated key like `TASKS_DATABASE_URL` etc. untouched). After the
+container is up and verified, the agent should `shred -u
+/tmp/daily-report.env`.
+
+### B. Maintainer writes them directly
+
+If the maintainer has SSH to the homelab they can just edit
+`~/83rr-poweredge/.env` themselves and tell the agent "secrets are in".
+Same end state, no intermediate file. Skip the `Environment` step in
+the agent's plan.
+
+### C. Paste into the agent's prompt (last resort)
+
+Type the full `KEY=value` lines directly to the agent. It will write
+them into `~/83rr-poweredge/.env`. Simple, but the values land in the
+chat transcript — only do this if the agent transcript is private and
+you're comfortable rotating the keys later.
+
+> **Don't** check secrets into the 83rr-poweredge repo or anywhere git
+> tracks. The `.env` at that repo's root is gitignored; the file inside
+> this repo is gitignored too. Both `.env.example` files are safe to
+> commit (no values).
 
 ## Schedule
 
