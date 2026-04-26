@@ -61,9 +61,12 @@ def kpi_card(
     prefix: str = "",
     suffix: str = "",
 ) -> None:
-    """A centered "stat card" with optional WoW-style delta indicator."""
+    """A centered "stat card": small label, big bold value, optional delta.
+
+    Intentionally compact - no surrounding `****` dividers since the
+    section_header above already provides visual separation.
+    """
     p.set(align="center")
-    p.divider("*")
     p.text(f"{label}\n")
     p.set(bold=True, double_height=True, double_width=True)
     if isinstance(value, bool):
@@ -78,7 +81,6 @@ def kpi_card(
     if delta_pct is not None:
         arrow = "^" if delta_pct >= 0 else "v"
         p.text(f"{arrow} {delta_pct:+.1f}% vs last week\n")
-    p.divider("*")
     p.set(align="left")
 
 

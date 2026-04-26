@@ -46,8 +46,14 @@ def _fetch(api_key: str, api_url: str, *, timeout: float = 10.0) -> list[dict]:
     return body.get("items", [])
 
 
-def summarize(*, days: int = 7, api_key: Optional[str] = None) -> dict:
-    """Aggregate the last `days` of expenses into a printable digest."""
+def summarize(*, days: int = 3, api_key: Optional[str] = None) -> dict:
+    """Aggregate the last `days` of expenses into a printable digest.
+
+    Returns a receipt-friendly view: the headline is a list of individual
+    transactions over the window plus a total. We also keep the by-day
+    and top-category aggregates available for callers that want them,
+    but the renderer only uses `transactions_recent` and `total`.
+    """
     api_key = api_key or os.environ.get("TALLIED_API_KEY")
     if not api_key:
         return _stub(days=days)
@@ -58,6 +64,7 @@ def summarize(*, days: int = 7, api_key: Optional[str] = None) -> dict:
     today = date.today()
     cutoff = today - timedelta(days=days - 1)
 
+    transactions_recent: list[dict] = []
     by_day_total: dict[str, float] = defaultdict(float)
     by_cat_total: dict[str, float] = defaultdict(float)
     tx_count = 0
@@ -76,7 +83,15 @@ def summarize(*, days: int = 7, api_key: Optional[str] = None) -> dict:
         if d < cutoff:
             continue
         amt = it.get("amount", 0) or 0
-        if amt >= 0:           # skip income
+        # Keep every transaction in the window (including income) so the
+        # receipt-style list is honest. Aggregates below remain expense-only.
+        transactions_recent.append({
+            "date": d_str,
+            "merchant": it.get("merchant") or "(unknown)",
+            "amount": amt,
+            "category": it.get("category"),
+        })
+        if amt >= 0:           # aggregates skip income
             continue
         spend = -amt
         by_day_total[d_str] += spend
@@ -84,21 +99,11 @@ def summarize(*, days: int = 7, api_key: Optional[str] = None) -> dict:
         by_cat_total[cat] += spend
         tx_count += 1
 
-    # Fill every day in the window so the bar chart has a complete x-axis.
-    by_day: list[tuple[str, float]] = []
-    for offset in range(days):
-        d = cutoff + timedelta(days=offset)
-        by_day.append((d.isoformat(), round(by_day_total.get(d.isoformat(), 0.0), 2)))
-
-    top_categories = [
-        (name, round(amt, 2))
-        for name, amt in sorted(by_cat_total.items(), key=lambda kv: -kv[1])[:5]
-    ]
+    transactions_recent.sort(key=lambda t: t["date"], reverse=True)
 
     return {
         "total": round(sum(by_day_total.values()), 2),
-        "by_day": by_day,
-        "top_categories": top_categories,
+        "transactions_recent": transactions_recent,
         "transactions": tx_count,
         "window_days": days,
         "most_recent_tx": most_recent_date.isoformat() if most_recent_date else None,
@@ -107,22 +112,22 @@ def summarize(*, days: int = 7, api_key: Optional[str] = None) -> dict:
 
 def _stub(*, days: int) -> dict:
     today = date.today()
-    sample = [42.18, 86.50, 12.99, 195.42, 28.30, 71.05, 33.88][:days]
+    sample = [
+        ("Trader Joe's",        -42.18, "Groceries"),
+        ("Anthropic, PBC",     -212.50, "Software"),
+        ("Stop & Shop",         -86.50, "Groceries"),
+    ][:days]
     return {
         "_stub": True,
-        "total": round(sum(sample), 2),
-        "by_day": [
-            ((today - timedelta(days=days - 1 - i)).isoformat(), v)
-            for i, v in enumerate(sample)
+        "total": round(-sum(t[1] for t in sample), 2),
+        "transactions_recent": [
+            {
+                "date": (today - timedelta(days=i)).isoformat(),
+                "merchant": m, "amount": amt, "category": cat,
+            }
+            for i, (m, amt, cat) in enumerate(sample)
         ],
-        "top_categories": [
-            ("Groceries",     178.42),
-            ("Restaurants",    94.10),
-            ("Transport",      62.30),
-            ("Subscriptions",  45.99),
-            ("Misc",           89.51),
-        ],
-        "transactions": 23,
+        "transactions": len(sample),
         "window_days": days,
         "most_recent_tx": today.isoformat(),
     }

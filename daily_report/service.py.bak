@@ -52,7 +52,7 @@ def _generate_kwargs() -> dict:
         "github_lookback_hours": int(os.environ.get("GITHUB_LOOKBACK_HOURS", 168)),
         "stock_ticker": os.environ.get("STOCK_TICKER", "PTC"),
         "weather_location": os.environ.get("WEATHER_LOCATION", "Ashland,MA"),
-        "tallied_days": int(os.environ.get("TALLIED_DAYS", 3)),
+        "tallied_days": int(os.environ.get("TALLIED_DAYS", 7)),
     }
 
 

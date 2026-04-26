@@ -188,10 +188,10 @@ def _section_stocks(p: ReceiptPrinter, data: dict) -> None:
     name = data.get("name") or data["ticker"]
     p.text(f"{data['ticker']} - {name[:24]}\n")
     charts.kpi_card(
-        p, f"{data['ticker']} CLOSE", data["current"], prefix="$",
+        p, f"{data['ticker']} CLOSE",
+        data["current"], delta_pct=data["day_change_pct"], prefix="$",
     )
-    # Day / Week / Month change on a single line - replaces the kpi_card
-    # delta (which would otherwise be hardcoded "vs last week").
+    # Single-line summary: Day / Week / Month % changes
     p.text(
         f"Day {data['day_change_pct']:+.1f}%  "
         f"Wk {data['week_change_pct']:+.1f}%  "
@@ -526,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--stock-ticker", default="PTC")
     parser.add_argument("--weather-location", default="Ashland,MA")
-    parser.add_argument("--tallied-days", type=int, default=3,
+    parser.add_argument("--tallied-days", type=int, default=7,
                         help="window for the tallied section (default: 7)")
     parser.add_argument("--title", default="DAILY REPORT")
     args = parser.parse_args(argv)

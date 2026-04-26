@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--github-lookback-hours", type=int, default=24 * 7)
     sp.add_argument("--stock-ticker", default="PTC")
     sp.add_argument("--weather-location", default="Ashland,MA")
-    sp.add_argument("--tallied-days", type=int, default=3)
+    sp.add_argument("--tallied-days", type=int, default=7)
 
     sp = sub.add_parser("report", help="print the composed daily report")
     sp.add_argument("--sections", nargs="+", default=None)
@@ -104,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--github-lookback-hours", type=int, default=24 * 7)
     sp.add_argument("--stock-ticker", default="PTC")
     sp.add_argument("--weather-location", default="Ashland,MA")
-    sp.add_argument("--tallied-days", type=int, default=3)
+    sp.add_argument("--tallied-days", type=int, default=7)
     sp.add_argument("--title", default="DAILY REPORT")
 
     args = parser.parse_args(argv)
