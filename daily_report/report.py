@@ -350,33 +350,33 @@ def _section_server(p: ReceiptPrinter, data: dict) -> None:
     cont_up = int(data.get("containers_up", 0))
     cont_total = int(data.get("containers_total", 0)) or cont_up
 
-    healthy = (
-        cpu_pct < 70 and mem_pct < 80 and disk_pct < 85
-        and cont_up == cont_total and cont_total > 0
+    # Top: identifying info as a key/value table.
+    styles.kv_line(p, "Host",       data.get("host", "?"))
+    styles.kv_line(p, "Uptime",     f"{data.get('uptime_days', 0):.1f}d")
+    styles.kv_line(
+        p, "Load 1/5/15",
+        f"{data.get('load_1m', 0)} "
+        f"{data.get('load_5m', 0)} "
+        f"{data.get('load_15m', 0)}",
     )
+    cont_str = f"{cont_up}/{cont_total}"
+    if cont_up < cont_total:
+        cont_str += "  *DOWN"
+    styles.kv_line(p, "Containers", cont_str, bold_value=(cont_up < cont_total))
 
-    if healthy:
-        # One-liner: trust + skim. We bury the detail unless something's off.
-        p.text(
-            f"{data['host']}: OK  {data.get('uptime_days', 0):.0f}d up  "
-            f"CPU {cpu_pct:.0f}%  Mem {mem_pct:.0f}%  Disk {disk_pct:.0f}%  "
-            f"{cont_up}/{cont_total} containers\n"
-        )
-        return
-
-    # Something's flagged: show the full breakdown.
-    p.text(f"{data['host']}\n")
-    styles.kv_line(p, "Uptime", f"{data['uptime_days']:.1f}d")
-    styles.kv_line(p, "Load 1/5/15",
-                   f"{data['load_1m']} {data['load_5m']} {data['load_15m']}")
+    # Bottom: resource utilization with progress bars + threshold flag.
     p.newline()
-    charts.progress(p, "Resources", [
-        ("CPU",  cpu_pct / 100),
-        ("Mem",  mem_pct / 100),
-        ("Disk", disk_pct / 100),
-    ])
-    p.newline()
-    styles.kv_line(p, "Containers", f"{cont_up}/{cont_total}")
+    bar_w = 20
+    rows = [
+        ("CPU",    cpu_pct,  70),
+        ("Memory", mem_pct,  80),
+        ("Disk",   disk_pct, 85),
+    ]
+    for name, pct, threshold in rows:
+        filled = int(round(bar_w * min(max(pct, 0), 100) / 100))
+        bar = "[" + "#" * filled + "-" * (bar_w - filled) + "]"
+        flag = "  *HIGH" if pct >= threshold else ""
+        p.text(f"{name:<8} {int(round(pct)):>3}%  {bar}{flag}\n")
 
 
 def _section_ai_summary(p: ReceiptPrinter, data: dict) -> None:
