@@ -234,15 +234,23 @@ def _sparkline_image(values: Sequence[float], w: int, h: int) -> Image.Image:
 def line_chart(
     p: ReceiptPrinter,
     title: str,
-    x: Sequence[float],
+    x: Sequence,
     y: Sequence[float],
     *,
     xlabel: str = "",
     ylabel: str = "",
     fill: bool = True,
     width_px: Optional[int] = None,
+    annotate_endpoints: bool = True,
+    value_fmt: str = "{:.2f}",
 ) -> None:
-    """matplotlib line chart, optionally with shaded area under the curve."""
+    """matplotlib line chart, optionally with shaded area under the curve.
+
+    When `annotate_endpoints` is True, the first and last y-values are
+    labeled directly on the chart, and the highest/lowest points get a
+    small marker. Useful for stock-style charts where "what were the
+    actual numbers" is the question the chart should answer at a glance.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -251,6 +259,27 @@ def line_chart(
     ax.plot(x, y, color="black", linewidth=2.2)
     if fill and y:
         ax.fill_between(x, y, min(y) - 1, color="black", alpha=0.12)
+
+    if annotate_endpoints and y:
+        # First / last labels
+        ax.annotate(
+            value_fmt.format(y[0]),
+            xy=(x[0], y[0]),
+            xytext=(4, 6), textcoords="offset points",
+            fontsize=10, fontweight="bold",
+        )
+        ax.annotate(
+            value_fmt.format(y[-1]),
+            xy=(x[-1], y[-1]),
+            xytext=(-4, 6), textcoords="offset points",
+            ha="right", fontsize=10, fontweight="bold",
+        )
+        # Min / max markers (no labels - keeps it readable on a small image)
+        i_max = max(range(len(y)), key=lambda i: y[i])
+        i_min = min(range(len(y)), key=lambda i: y[i])
+        ax.plot([x[i_max]], [y[i_max]], marker="^", color="black", markersize=7)
+        ax.plot([x[i_min]], [y[i_min]], marker="v", color="black", markersize=7)
+
     ax.set_title(title, fontsize=12, fontweight="bold")
     if xlabel:
         ax.set_xlabel(xlabel)
@@ -259,6 +288,15 @@ def line_chart(
     ax.grid(True, alpha=0.3)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+
+    # If the x-axis is datetime-like, let matplotlib format it nicely.
+    try:
+        import datetime as _dt
+        if x and isinstance(x[0], _dt.datetime):
+            fig.autofmt_xdate()
+    except ImportError:
+        pass
+
     p.image(_mpl_to_image(fig, width_px or p.IMAGE_WIDTH_PX))
 
 

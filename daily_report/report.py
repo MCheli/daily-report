@@ -211,8 +211,17 @@ def _section_stocks(p: ReceiptPrinter, data: dict) -> None:
         f"Wk {data['week_change_pct']:+.1f}%  "
         f"Mo {data['month_change_pct']:+.1f}%\n"
     )
-    if data.get("history"):
-        charts.sparkline(p, "30d close", [c for _, c in data["history"]])
+    history = data.get("history") or []
+    if history:
+        from datetime import datetime as _dt
+        xs = [_dt.fromisoformat(d) for d, _ in history]
+        ys = [c for _, c in history]
+        charts.line_chart(
+            p,
+            f"{data['ticker']} close - last {len(history)} days",
+            xs, ys,
+            ylabel="$",
+        )
 
 
 def _section_calendar(p: ReceiptPrinter, data: dict) -> None:
@@ -220,21 +229,73 @@ def _section_calendar(p: ReceiptPrinter, data: dict) -> None:
     if _error_or_continue(p, data):
         return
     _stub_marker(p, data)
-    if not data.get("next_events"):
-        p.text("nothing on the calendar in the next 2 weeks\n")
+    events = data.get("next_events") or []
+    if not events:
+        p.text("nothing on the calendar in the next 90 days\n")
         return
-    for ev in data["next_events"]:
-        # Parse start so we can label with day-of-week.
-        from datetime import datetime as _dt
+
+    from datetime import date as _date, datetime as _dt
+    today = _date.today()
+
+    for i, ev in enumerate(events):
+        if i > 0:
+            p.newline()    # blank line between events for breathing room
+
         try:
             dt = _dt.fromisoformat(ev["start"])
-            dow = dt.strftime("%a")              # Mon, Tue, ...
-            when = dt.strftime("%m-%d %H:%M")     # 05-01 20:00
         except (KeyError, ValueError):
-            dow, when = "??", ev.get("start", "")[:11]
-        p.text(f"{dow} {when}  {ev['title'][:24]}\n")
-        if ev.get("location"):
-            p.text(f"   @ {ev['location'][:36]}\n")
+            p.text(f"  {ev.get('start', '?')}  {ev.get('title', '')[:24]}\n")
+            continue
+
+        days_until = (dt.date() - today).days
+        if days_until == 0:
+            rel = "today"
+        elif days_until == 1:
+            rel = "tomorrow"
+        elif days_until < 0:
+            rel = "past"
+        else:
+            rel = f"in {days_until}d"
+
+        # Header row: bold "Fri May 1  8:00 PM" on the left, "in 6d" right.
+        date_str = dt.strftime("%a %b %d")
+        time_str = dt.strftime("%I:%M %p").lstrip("0")
+        left = f"{date_str}  {time_str}"
+        pad = max(1, p.CONTENT_WIDTH - len(left) - len(rel))
+        p.set(bold=True)
+        p.text(f"{left}{' ' * pad}{rel}\n")
+        p.set(bold=False)
+
+        # Title row(s), word-wrapped under a 3-space indent.
+        title = ev.get("title", "(no title)")
+        duration_min = ev.get("duration_min") or 0
+        if duration_min >= 24 * 60:
+            days_long = duration_min // (24 * 60)
+            title = f"{title}  [{days_long}d trip]"
+        _wrap_lines(p, title, indent=3)
+
+        # Location: skip URLs (useless on paper); keep physical addresses.
+        loc = ev.get("location")
+        if loc and not loc.startswith(("http://", "https://")):
+            _wrap_lines(p, f"@ {loc}", indent=3)
+
+
+def _wrap_lines(p: ReceiptPrinter, text: str, *, indent: int = 0) -> None:
+    """Word-wrap `text` to `p.CONTENT_WIDTH` with a leading indent on every line."""
+    pad = " " * indent
+    width = p.CONTENT_WIDTH - indent
+    words = text.split()
+    line = ""
+    for w in words:
+        if not line:
+            line = w
+        elif len(line) + 1 + len(w) > width:
+            p.text(pad + line + "\n")
+            line = w
+        else:
+            line += " " + w
+    if line:
+        p.text(pad + line + "\n")
 
 
 def _section_motivation(p: ReceiptPrinter, data: dict) -> None:
