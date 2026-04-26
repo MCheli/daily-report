@@ -101,8 +101,28 @@ class _Handler(BaseHTTPRequestHandler):
     def _check_auth(self) -> bool:
         if not self.api_token:
             return True
+        # Bearer header (CLI, scripts)
         got = self.headers.get("Authorization", "")
-        return got == f"Bearer {self.api_token}"
+        if got == f"Bearer {self.api_token}":
+            return True
+        # Session cookie set by GET / so the in-browser Print button on
+        # the preview page can trigger without exposing the token to JS.
+        for chunk in self.headers.get("Cookie", "").split(";"):
+            if "=" not in chunk:
+                continue
+            k, v = chunk.split("=", 1)
+            if k.strip() == "dr_session" and v.strip() == self.api_token:
+                return True
+        return False
+
+    def _session_cookie_header(self) -> str | None:
+        """Return a Set-Cookie value if we should issue a session cookie."""
+        if not self.api_token:
+            return None
+        return (
+            f"dr_session={self.api_token}; HttpOnly; SameSite=Strict; "
+            f"Path=/; Max-Age=86400"
+        )
 
     def _read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -122,11 +142,15 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_html(self, code: int, body: str) -> None:
+    def _send_html(self, code: int, body: str, *, set_session: bool = False) -> None:
         data = body.encode()
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        if set_session:
+            cookie = self._session_cookie_header()
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(data)
 
@@ -139,7 +163,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/preview"):
             try:
                 page = preview.generate_preview_html(**_generate_kwargs())
-                self._send_html(200, page)
+                self._send_html(200, page, set_session=True)
             except Exception:
                 err = traceback.format_exc()
                 self._send_html(
