@@ -18,6 +18,7 @@ import json
 import os
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 DEFAULT_API_URL = "https://tasks.markcheli.com"
 _USER_AGENT = "daily-report/1.0 (+https://github.com/MCheli/daily-report)"
@@ -44,51 +45,54 @@ def _fetch_current_cycle(api_url: str, api_key: str, category: str) -> dict:
     return _get_json(url, api_key)
 
 
-def summarize(*, top_n: int = 5) -> dict:
-    """Aggregate open tasks across personal + professional cycles."""
+def summarize() -> dict:
+    """Return ALL open tasks across personal + professional cycles, with
+    enough metadata for the renderer to show two lists with checkboxes
+    and days-open."""
     api_key = os.environ.get("TASKS_API_KEY")
     if not api_key:
         return _stub()
 
     api_url = os.environ.get("TASKS_API_URL", DEFAULT_API_URL)
+    now = datetime.now(timezone.utc)
 
-    out_open: list[dict] = []
-    by_cycle: list[tuple[str, int]] = []
+    by_category: dict[str, list[dict]] = {"personal": [], "professional": []}
     for cat in ("personal", "professional"):
         data = _fetch_current_cycle(api_url, api_key, cat)
         open_tasks = data.get("tasks", {}).get("open", []) or []
-        by_cycle.append((cat, len(open_tasks)))
-        for t in open_tasks:
-            t["_cycle"] = cat
-            out_open.append(t)
-
-    out_open.sort(key=lambda t: (t.get("_cycle"), t.get("position", 0)))
-
-    top_tasks: list[tuple[str, str, str]] = []
-    for t in out_open[:top_n]:
-        title = t.get("title", "(untitled)")[:24]
-        cyc = t.get("_cycle", "")
-        # The API doesn't surface priority/due fields today; using the cycle
-        # as the secondary line keeps the renderer interface stable.
-        top_tasks.append((title, cyc, "med"))
+        for t in sorted(open_tasks, key=lambda x: x.get("position", 0)):
+            created = t.get("created_at")
+            days_open = 0
+            if created:
+                try:
+                    created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    days_open = max(0, (now - created_dt).days)
+                except ValueError:
+                    pass
+            by_category[cat].append({
+                "title": t.get("title") or "(untitled)",
+                "days_open": days_open,
+                "push_forward_count": int(t.get("push_forward_count", 0) or 0),
+            })
 
     return {
-        "open_count": len(out_open),
-        "by_cycle": by_cycle,
-        "top_tasks": top_tasks,
+        "personal": by_category["personal"],
+        "professional": by_category["professional"],
+        "open_count": sum(len(v) for v in by_category.values()),
     }
 
 
 def _stub() -> dict:
     return {
         "_stub": True,
-        "open_count": 12,
-        "by_cycle": [("personal", 4), ("professional", 8)],
-        "top_tasks": [
-            ("Review homelab backups",   "personal",     "high"),
-            ("Submit expense report",    "professional", "med"),
-            ("Plan Q3 OKRs",             "professional", "med"),
-            ("Email the contractor",     "personal",     "low"),
-            ("Update tasks app README",  "personal",     "low"),
+        "open_count": 5,
+        "personal": [
+            {"title": "Review homelab backups", "days_open": 3, "push_forward_count": 0},
+            {"title": "Email the contractor",   "days_open": 1, "push_forward_count": 0},
+            {"title": "Update tasks app README","days_open": 5, "push_forward_count": 1},
+        ],
+        "professional": [
+            {"title": "Submit expense report",  "days_open": 1, "push_forward_count": 0},
+            {"title": "Plan Q3 OKRs",           "days_open": 7, "push_forward_count": 2},
         ],
     }

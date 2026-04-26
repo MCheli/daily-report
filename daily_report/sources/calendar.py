@@ -99,7 +99,7 @@ def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
     return events
 
 
-def summarize(*, horizon_days: int = 14, top_n: int = 5) -> dict:
+def summarize(*, horizon_days: int = 90, top_n: int = 5) -> dict:
     """Return the next `top_n` events from the user's primary ICS feed."""
     url = os.environ.get("CALENDAR_ICS_URL")
     if not url:

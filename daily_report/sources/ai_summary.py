@@ -11,14 +11,14 @@ from __future__ import annotations
 import json
 import os
 
-PROMPT_TEMPLATE = """You are a personal assistant printing a one-paragraph summary on an 80mm thermal receipt printer.
+PROMPT_TEMPLATE = """You are a personal assistant printing a short summary at the top of a thermal receipt the user reads with their morning coffee.
 
-Below is the data already gathered for today's report. Write a single paragraph (under 80 words, ~6-8 sentences max) that summarises the day's most notable items across this data. Lead with the most important or surprising thing. Be concrete: cite specific numbers, names, dates, or events. Do not list every section - synthesize. Avoid filler like "Here's a summary" or "Today's report shows".
+Below is the data already gathered. Write a tight summary, **under 40 words total**, organized as 2-3 short paragraphs separated by a single blank line. Each paragraph should cover one theme (e.g. one for weather + day's plans, one for finance/work, one for home/server). Lead with the most actionable or surprising thing. Be concrete - cite specific numbers, names, or events.
 
 Data:
 {data}
 
-Write only the paragraph itself, no preamble or sign-off. Plain ASCII text only (no emojis, no fancy quotes - the printer's character set is limited)."""
+Write only the paragraphs themselves, no preamble or sign-off. Plain ASCII only (no emojis, no fancy quotes - the printer's character set is limited)."""
 
 
 def summarize(collected: dict, *, model: str = "claude-haiku-4-5") -> dict:

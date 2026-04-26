@@ -136,14 +136,28 @@ def _section_tasks(p: ReceiptPrinter, data: dict) -> None:
     if _error_or_continue(p, data):
         return
     _stub_marker(p, data)
-    charts.kpi_card(p, "OPEN TASKS", data["open_count"])
-    charts.horizontal_bars(p, "By cycle", data["by_cycle"])
-    p.newline()
-    styles.styled(p, "Top tasks", bold=True)
-    for title, due, prio in data["top_tasks"]:
-        prio_mark = {"high": "!!", "med": "* ", "low": "  "}.get(prio, "  ")
-        p.text(f"{prio_mark}{title[:20]}\n")
-        p.text(f"   due: {due}\n")
+
+    def _print_list(label: str, items: list[dict]) -> None:
+        if not items:
+            return
+        styles.styled(p, f"{label} ({len(items)})", bold=True)
+        # Layout: "[ ] " (4) + title (variable) + age column right-aligned.
+        # Reserve 6 chars at the right for "(NNd*)" so titles can run up
+        # to CONTENT_WIDTH - 4 - 1 - 6 = 21 chars at width 32.
+        title_max = max(8, p.CONTENT_WIDTH - 4 - 1 - 6)
+        for it in items:
+            title = (it.get("title") or "(untitled)")[:title_max]
+            d = int(it.get("days_open", 0))
+            push = int(it.get("push_forward_count", 0) or 0)
+            age = f"{d}d" + ("*" if push > 0 else "")
+            age_str = f"({age})"
+            pad = max(1, p.CONTENT_WIDTH - 4 - len(title) - len(age_str))
+            p.text(f"[ ] {title}{' ' * pad}{age_str}\n")
+
+    _print_list("PERSONAL",     data.get("personal") or [])
+    if data.get("personal") and data.get("professional"):
+        p.newline()
+    _print_list("PROFESSIONAL", data.get("professional") or [])
 
 
 def _section_tallied(p: ReceiptPrinter, data: dict) -> None:
@@ -260,22 +274,26 @@ def _section_weather(p: ReceiptPrinter, data: dict) -> None:
     p.text(f"wind {cur['wind_mph']} mph\n")
     p.set(align="left")
     p.newline()
-    styles.kv_line(p, "Today",   f"{today['min_f']}F / {today['max_f']}F")
-    styles.kv_line(p, "Sunrise", today["sunrise"])
-    styles.kv_line(p, "Sunset",  today["sunset"])
-    if len(data["forecast"]) > 1:
+    styles.kv_line(p, "Today",   f"{today.get('min_f', 0)}F / {today.get('max_f', 0)}F")
+    styles.kv_line(p, "Sunrise", today.get("sunrise", ""))
+    styles.kv_line(p, "Sunset",  today.get("sunset",  ""))
+
+    forecast = data.get("forecast") or []
+    if len(forecast) > 1:
         p.newline()
-        styles.styled(p, "Forecast", bold=True)
-        upcoming = data["forecast"][1:6]
-        for day in upcoming:
-            label = day["date"][5:]   # MM-DD
-            p.text(f"{label}  {day['min_f']:>3}F/{day['max_f']:>3}F  {day['desc'][:10]}\n")
-        # Bar chart of daily highs to show warming/cooling trend
-        p.newline()
-        charts.horizontal_bars(
-            p, "High temps (F)",
-            [(day["date"][5:], day["max_f"]) for day in upcoming],
-            name_width=5,
+        styles.styled(p, "5-day forecast", bold=True)
+        # Text table: day-of-week, low/high, description
+        for day in forecast:
+            dow = day.get("day_of_week", "?")
+            p.text(
+                f"{dow}  {day['min_f']:>3}F/{day['max_f']:>3}F  "
+                f"{day.get('desc', '')[:14]}\n"
+            )
+        # Matplotlib bar chart of daily highs - sharper visual on temps.
+        charts.bar_chart(
+            p, "Daily highs (F)",
+            [d["day_of_week"] for d in forecast],
+            [d["max_f"] for d in forecast],
         )
 
 
@@ -431,10 +449,10 @@ SECTIONS: dict[str, Callable[[ReceiptPrinter, dict], None]] = {
 #   - homelab and github dropped from default print (mostly static / vanity);
 #     still callable via /trigger with {"sections": [...]}.
 DEFAULT_ORDER = [
+    "ai_summary",   # the punchline first - always reflects ALL collected data
     "weather",
     "calendar",
     "tasks",
-    "ai_summary",
     "power",
     "server",
     "stocks",
