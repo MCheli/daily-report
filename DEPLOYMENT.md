@@ -70,7 +70,8 @@ preferably near `tasks` / `tallied` for grouping:
 ```
 
 **No new volume**, **no new network**, **no port publish** — the API is
-internal-only by default. Add an nginx route below if you want LAN access.
+internal-only by default. Add an nginx route or a port publish (see
+**Browser preview** below) if you want to reach it from a workstation.
 
 ## Environment
 
@@ -112,6 +113,40 @@ To print at multiple times, comma-separate:
 ```yaml
 - REPORT_TIMES=07:00,18:00
 ```
+
+## Browser preview
+
+The same HTML preview that's available locally during development is built
+into the service at `GET /` and `GET /preview`. To make it browsable on
+your LAN, pick one of:
+
+**Option A — quickest, for testing.** Add a port publish to the compose
+stanza:
+
+```yaml
+    ports:
+      - "8080:8080"
+```
+
+Then visit `http://<homelab-host>:8080/` from any machine on your LAN.
+
+**Option B — recommended, fits your existing pattern.** Drop a LAN-only
+nginx site under `~/83rr-poweredge/infrastructure/nginx/conf.d/` (sketch
+below) and visit `https://report.ops.markcheli.com/`.
+
+**Option C — no setup, host-only.** From the homelab itself:
+
+```bash
+ssh 83rr-poweredge -L 8080:daily-report:8080
+# then http://localhost:8080/ in a browser on the workstation
+```
+
+Refreshing the page re-runs every source and re-renders the receipt,
+so you see live data on each load. The preview is the same renderer
+the printer uses — what you see is what would print.
+
+The preview is **read-only** — it doesn't trigger a real print. Use
+`POST /trigger` for that.
 
 ## API
 
