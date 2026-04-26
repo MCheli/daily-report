@@ -3,3 +3,6 @@ Pillow>=10.0
 matplotlib>=3.8
 numpy>=1.26
 qrcode>=7.4
+yfinance>=0.2.40
+anthropic>=0.40.0
+python-dotenv>=1.0

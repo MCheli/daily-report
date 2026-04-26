@@ -34,9 +34,10 @@ def kicker(p: ReceiptPrinter, text: str) -> None:
 
 
 def section_header(p: ReceiptPrinter, text: str) -> None:
-    """Bold heading followed by an `=` divider."""
+    """Bold heading followed by an `=` divider. No leading blank line - the
+    divider itself separates sections enough at tight line spacing."""
     p.set(align="left", bold=True)
-    p.text(f"\n{text}\n")
+    p.text(f"{text}\n")
     p.set(bold=False)
     p.divider("=")
 

@@ -18,6 +18,14 @@ Typical usage:
         charts.horizontal_bars(p, "Sales by region", [("US", 142), ...])
         p.cut()
 """
+# Load .env from the repo root (or any ancestor) into os.environ at import
+# time so sources can read API keys via os.environ without callers needing
+# to remember an `export` step. Uses find_dotenv() so it works from the
+# CLI, the preview server, examples, or arbitrary cwd.
+from dotenv import find_dotenv, load_dotenv
+load_dotenv(find_dotenv(usecwd=True))
+del find_dotenv, load_dotenv
+
 from .printer import ReceiptPrinter
 from . import charts, styles
 

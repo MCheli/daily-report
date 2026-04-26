@@ -44,15 +44,39 @@ daily_report/
   printer.py    ReceiptPrinter (context manager) + constants + status query
   charts.py     Data viz functions, all take ReceiptPrinter as first arg
   styles.py     Formatting helpers (titles, sections, QR, barcode, table)
+  report.py     Two-phase pipeline: collect data, then render sections
   cli.py        argparse CLI for ad-hoc printing
+  sources/      one module per data source, each exposing summarize()
 examples/
   chart_sampler.py  every chart on one receipt
   style_sampler.py  every formatting primitive on one receipt
 ```
 
-The core decision: charts and styles are **free functions that take a
-printer**, not methods on the printer. This keeps the printer class focused
-on transport and lets data sources compose chart calls freely.
+Two key architectural decisions:
+
+1. **Charts and styles are free functions taking a printer**, not methods
+   on the printer. Keeps the printer class focused on transport and lets
+   data sources compose chart calls freely.
+
+2. **`report.py` is two-phase**: it collects all source data into a
+   `collected: dict` first, then renders sections from that dict. The
+   `ai_summary` source consumes `collected` after every other source has
+   run, so it can synthesize across them. Section renderers are pure
+   `(printer, data) -> None` — they don't fetch anything themselves.
+
+## Source pattern
+
+Each `daily_report/sources/<name>.py` exposes `summarize(...) -> dict`.
+Conventions:
+
+- Required fields go at the top of the dict; optional ones at the bottom.
+- Stub sources return realistic sample data with `_stub: True`. Renderers
+  detect this and print a "(sample data - not wired up yet)" line.
+- Sources with auth requirements check env vars first; if missing, a
+  stub source returns sample data, but a real source returns
+  `{"error": "<what's missing>"}` (the renderer surfaces it).
+- Long-running fetches accept `timeout=` and degrade gracefully on network
+  errors so a single dead source can't block the whole report.
 
 ## Conventions
 

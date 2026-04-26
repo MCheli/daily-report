@@ -78,10 +78,24 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("charts", help="run examples/chart_sampler.py")
     sub.add_parser("styles", help="run examples/style_sampler.py")
 
+    sp = sub.add_parser("preview", help="serve a local HTML preview at localhost:5050")
+    sp.add_argument("--port", type=int, default=5050)
+    sp.add_argument("--no-browser", action="store_true",
+                    help="don't auto-open the browser")
+    sp.add_argument("--sections", nargs="+", default=None)
+    sp.add_argument("--check-urls", action="store_true")
+    sp.add_argument("--github-lookback-hours", type=int, default=24 * 7)
+    sp.add_argument("--stock-ticker", default="PTC")
+    sp.add_argument("--weather-location", default="Ashland,MA")
+    sp.add_argument("--tallied-days", type=int, default=7)
+
     sp = sub.add_parser("report", help="print the composed daily report")
     sp.add_argument("--sections", nargs="+", default=None)
     sp.add_argument("--check-urls", action="store_true")
     sp.add_argument("--github-lookback-hours", type=int, default=24 * 7)
+    sp.add_argument("--stock-ticker", default="PTC")
+    sp.add_argument("--weather-location", default="Ashland,MA")
+    sp.add_argument("--tallied-days", type=int, default=7)
     sp.add_argument("--title", default="DAILY REPORT")
 
     args = parser.parse_args(argv)
@@ -101,9 +115,24 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "report":
         report.generate(
             args.sections,
+            title=args.title,
             check_urls=args.check_urls,
             github_lookback_hours=args.github_lookback_hours,
-            title=args.title,
+            stock_ticker=args.stock_ticker,
+            weather_location=args.weather_location,
+            tallied_days=args.tallied_days,
+        )
+    elif args.cmd == "preview":
+        from . import preview
+        preview.serve(
+            port=args.port,
+            open_browser=not args.no_browser,
+            sections=args.sections,
+            check_urls=args.check_urls,
+            github_lookback_hours=args.github_lookback_hours,
+            stock_ticker=args.stock_ticker,
+            weather_location=args.weather_location,
+            tallied_days=args.tallied_days,
         )
     return 0
 

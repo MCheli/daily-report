@@ -129,14 +129,17 @@ DLE-EOT queries (printer / offline cause / error / paper sensor).
 `daily_report/sources/`, calls into `charts` / `styles`, and prints.
 
 ```bash
-# print all sections (currently: homelab)
+# print every registered section in DEFAULT_ORDER
 python -m daily_report.cli report
 
 # subset
-python -m daily_report.cli report --sections homelab
+python -m daily_report.cli report --sections weather stocks ai_summary
 
-# enable live HEAD checks against service URLs
-python -m daily_report.cli report --check-urls
+# tune per-source knobs
+python -m daily_report.cli report --check-urls \
+    --github-lookback-hours 720 \
+    --stock-ticker AAPL \
+    --weather-location "Boston,MA"
 ```
 
 ## Adding a new data source
@@ -149,13 +152,40 @@ python -m daily_report.cli report --check-urls
 
 Sources currently shipped:
 
+**Real (no setup needed):**
 - `sources/homelab.py` — reads `services.json` from PersonalWebsite,
   optionally does live HEAD checks via `summarize(check_urls=True)`.
 - `sources/github.py` — shells out to the `gh` CLI (uses your existing
-  auth) to pull profile counts, recent activity, open PRs, review queue,
-  and top repos by stars. Tunable lookback via
-  `summarize(lookback_hours=...)` (defaults to 168h / 7 days in the
-  composed report).
+  auth) for profile, recent activity, open PRs, review queue, top repos.
+- `sources/weather.py` — wttr.in JSON (no auth). Defaults to Ashland, MA.
+  Returns current conditions + 5-day forecast.
+- `sources/stocks.py` — yfinance (no auth). Default ticker `PTC`.
+  Includes 30-day close history for sparklines.
+- `sources/motivation.py` — ZenQuotes (no auth) with a built-in fallback
+  list when the network is unavailable.
+
+**AI:**
+- `sources/ai_summary.py` — calls Claude Haiku 4.5 via the Anthropic SDK
+  with the rest of the day's data and gets back a short synthesized
+  paragraph. Requires `ANTHROPIC_API_KEY`; falls back to a "disabled"
+  message when the key isn't set so the layout still prints.
+
+**Stubbed (return sample data marked `_stub: True` until wired up):**
+- `sources/tasks.py` — for tasks.markcheli.com. Needs `TASKS_API_URL`
+  and `TASKS_API_TOKEN` plus an HTTP client.
+- `sources/tallied.py` — for money.markcheli.com. Tallied uses Google
+  SSO so will need either a service-account token or an SSO-exempt
+  endpoint.
+- `sources/calendar.py` — Google Calendar. Either oauth via
+  google-api-python-client + a stored refresh token, or shell out to
+  `gcalcli`.
+- `sources/power.py` — home power consumption. The data source isn't
+  picked yet (Sense, Emporia Vue, Powerwall, Home Assistant, etc.).
+- `sources/server.py` — homelab resource summary. Best path is querying
+  the existing Prometheus/`node_exporter` series via `PROM_URL`.
+
+Each stub source prints a "(sample data - not wired up yet)" subtitle
+under its section header so it's obvious what's real vs placeholder.
 
 Rough pattern for adding GitHub activity, for example:
 
