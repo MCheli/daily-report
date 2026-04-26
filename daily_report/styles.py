@@ -34,8 +34,15 @@ def kicker(p: ReceiptPrinter, text: str) -> None:
 
 
 def section_header(p: ReceiptPrinter, text: str) -> None:
-    """Bold heading followed by an `=` divider. No leading blank line - the
-    divider itself separates sections enough at tight line spacing."""
+    """Whitespace, a top `=` divider, the bold title, and a bottom `=` divider.
+
+        (blank line)
+        ============================================
+        TITLE
+        ============================================
+    """
+    p.newline()
+    p.divider("=")
     p.set(align="left", bold=True)
     p.text(f"{text}\n")
     p.set(bold=False)
