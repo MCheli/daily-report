@@ -304,9 +304,23 @@ def _section_power(p: ReceiptPrinter, data: dict) -> None:
     _stub_marker(p, data)
     # At 7 AM, "today" is mostly empty so make YESTERDAY the headline.
     charts.kpi_card(p, "YESTERDAY", data.get("yesterday_kwh", 0.0), suffix=" kWh")
-    # 7-day chart - keep, surfaces trends.
-    daily = [(d.split("-")[-1], v) for d, v in data["by_day"]]
-    charts.horizontal_bars(p, "By day (kWh)", daily, name_width=4, value_width=6)
+
+    # 7-day chart as a matplotlib bar image (matches the weather forecast
+    # chart's aesthetic), with day-of-week labels.
+    by_day = data.get("by_day") or []
+    if by_day:
+        from datetime import date as _date
+        labels: list[str] = []
+        values: list[float] = []
+        for d_str, kwh in by_day:
+            try:
+                dow = _date.fromisoformat(d_str).strftime("%a")
+            except ValueError:
+                dow = d_str[5:]
+            labels.append(dow)
+            values.append(kwh)
+        charts.bar_chart(p, "kWh per day", labels, values)
+
     # Live draw is genuinely "now" so keep it; today_kwh / peak_today
     # are early-morning noise so we drop them at render time.
     p.newline()
