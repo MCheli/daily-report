@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import sys
 
 from .printer import ReceiptPrinter
@@ -78,6 +79,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("charts", help="run examples/chart_sampler.py")
     sub.add_parser("styles", help="run examples/style_sampler.py")
 
+    sp = sub.add_parser("service",
+                        help="run as a long-lived daemon: schedule + HTTP API")
+    sp.add_argument("--port", type=int, default=None,
+                    help="HTTP API port (default: $DAILY_REPORT_PORT or 8080)")
+    sp.add_argument("--at", action="append", dest="schedule_times",
+                    help="daily HH:MM time(s) to print (repeatable). "
+                         "Default: $REPORT_TIMES env var, otherwise '07:00'")
+
     sp = sub.add_parser("preview", help="serve a local HTML preview at localhost:5050")
     sp.add_argument("--port", type=int, default=5050)
     sp.add_argument("--no-browser", action="store_true",
@@ -122,6 +131,14 @@ def main(argv: list[str] | None = None) -> int:
             weather_location=args.weather_location,
             tallied_days=args.tallied_days,
         )
+    elif args.cmd == "service":
+        from . import service
+        # Default to 07:00 if neither --at nor REPORT_TIMES env is set.
+        times = args.schedule_times
+        if times is None:
+            env_times = os.environ.get("REPORT_TIMES", "").strip()
+            times = [t.strip() for t in env_times.split(",") if t.strip()] or ["07:00"]
+        service.serve(port=args.port, schedule_times=times)
     elif args.cmd == "preview":
         from . import preview
         preview.serve(
