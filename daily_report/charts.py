@@ -66,7 +66,11 @@ def kpi_card(
     p.divider("*")
     p.text(f"{label}\n")
     p.set(bold=True, double_height=True, double_width=True)
-    if isinstance(value, (int, float)):
+    if isinstance(value, bool):
+        p.text(f"{prefix}{value}{suffix}\n")
+    elif isinstance(value, int):
+        p.text(f"{prefix}{value:,}{suffix}\n")
+    elif isinstance(value, float):
         p.text(f"{prefix}{value:,.2f}{suffix}\n")
     else:
         p.text(f"{prefix}{value}{suffix}\n")
