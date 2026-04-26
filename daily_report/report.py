@@ -282,18 +282,27 @@ def _section_weather(p: ReceiptPrinter, data: dict) -> None:
     if len(forecast) > 1:
         p.newline()
         styles.styled(p, "5-day forecast", bold=True)
-        # Text table: day-of-week, low/high, description
-        for day in forecast:
-            dow = day.get("day_of_week", "?")
-            p.text(
-                f"{dow}  {day['min_f']:>3}F/{day['max_f']:>3}F  "
-                f"{day.get('desc', '')[:14]}\n"
-            )
-        # Matplotlib bar chart of daily highs - sharper visual on temps.
+        # Horizontal layout, one column per day - reads left-to-right like
+        # a weather widget.
+        cols = forecast[:5]
+        col_w = p.CONTENT_WIDTH // len(cols)
+        # Row 1: day-of-week
+        p.set(bold=True)
+        p.text("".join(f"{d.get('day_of_week','?'):^{col_w}}" for d in cols) + "\n")
+        p.set(bold=False)
+        # Row 2: high/low
+        p.text("".join(
+            f"{f'{d['max_f']}/{d['min_f']}F':^{col_w}}" for d in cols
+        ) + "\n")
+        # Row 3: short condition (truncate to col_w-1 to keep a 1-char gutter)
+        p.text("".join(
+            f"{d.get('desc','')[:col_w-1]:^{col_w}}" for d in cols
+        ) + "\n")
+        # Matplotlib bar chart of daily highs reinforces the trend visually.
         charts.bar_chart(
             p, "Daily highs (F)",
-            [d["day_of_week"] for d in forecast],
-            [d["max_f"] for d in forecast],
+            [d["day_of_week"] for d in cols],
+            [d["max_f"] for d in cols],
         )
 
 
