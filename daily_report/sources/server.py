@@ -102,13 +102,24 @@ def summarize() -> dict:
             ((disk_size - disk_avail) / disk_size * 100) if disk_size else 0.0
         )
 
-        # Uptime in days (from boot timestamp)
-        boot_ts = _query(url, "node_boot_time_seconds", auth=auth)
-        if boot_ts:
-            now = _query(url, "time()", auth=auth) or 0.0
-            uptime_days = max(0.0, (now - boot_ts) / 86400)
+        # Uptime in days. Compute the diff server-side so we get a single
+        # consistent answer (no clock-skew between two separate queries).
+        # Try a few metric names because node-exporter versions vary.
+        uptime_seconds: float | None = None
+        for expr in (
+            "time() - node_boot_time_seconds",
+            "time() - node_boot_time",                # older exporters
+            "node_time_seconds - node_boot_time_seconds",
+        ):
+            v = _query(url, expr, auth=auth)
+            if v is not None and v > 0:
+                uptime_seconds = v
+                break
+        uptime_days: float | None
+        if uptime_seconds is None:
+            uptime_days = None      # signal "metric unavailable" to the renderer
         else:
-            uptime_days = 0.0
+            uptime_days = uptime_seconds / 86400
 
         # Container counts via cadvisor: each running container exposes one
         # series for `container_last_seen{name="..."}`. We count *series*

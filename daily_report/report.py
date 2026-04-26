@@ -280,15 +280,17 @@ def _section_calendar(p: ReceiptPrinter, data: dict) -> None:
             _wrap_lines(p, f"@ {loc}", indent=3)
 
 
-def _format_uptime(days: float) -> str:
+def _format_uptime(days) -> str:
     """Render uptime in the largest unit that's >= 1.
 
-    `0.0d` is useless. Use minutes / hours / days / weeks so the value
-    is always informative regardless of how recently the host rebooted.
+    Returns "?" when the metric is unavailable so it's clear the data
+    isn't there, vs misleadingly showing "0m".
     """
+    if days is None:
+        return "?"
     days = float(days or 0)
     if days <= 0:
-        return "0m"
+        return "?"
     if days < 1 / 24:                       # under an hour
         minutes = int(round(days * 24 * 60))
         return f"{minutes}m"
