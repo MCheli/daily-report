@@ -110,13 +110,18 @@ def summarize() -> dict:
         else:
             uptime_days = 0.0
 
-        # Container counts via cadvisor (one series per running container)
+        # Container counts via cadvisor: each running container exposes one
+        # series for `container_last_seen{name="..."}`. We count *series*
+        # rather than wrapping in `count(...)` — `count(...)` collapses to
+        # a single series whose value is the count, which would always read
+        # back as 1 series.
         containers_up = _query_count(
-            url, 'count(container_last_seen{name!=""})', auth=auth,
+            url, 'container_last_seen{name!=""}', auth=auth,
         )
-        # Total = up; stopped containers don't appear in cadvisor's recent series.
-        # If you start tracking compose state via a separate exporter we can
-        # surface "up vs total" properly here.
+        # Stopped containers don't appear in cadvisor's recent series, so
+        # we have no "total" reference unless a separate exporter publishes
+        # one. For now `total == up` and the renderer's *DOWN flag stays
+        # quiet.
         containers_total = containers_up
 
         return {

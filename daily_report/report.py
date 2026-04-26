@@ -280,6 +280,27 @@ def _section_calendar(p: ReceiptPrinter, data: dict) -> None:
             _wrap_lines(p, f"@ {loc}", indent=3)
 
 
+def _format_uptime(days: float) -> str:
+    """Render uptime in the largest unit that's >= 1.
+
+    `0.0d` is useless. Use minutes / hours / days / weeks so the value
+    is always informative regardless of how recently the host rebooted.
+    """
+    days = float(days or 0)
+    if days <= 0:
+        return "0m"
+    if days < 1 / 24:                       # under an hour
+        minutes = int(round(days * 24 * 60))
+        return f"{minutes}m"
+    if days < 1:                             # under a day
+        hours = days * 24
+        return f"{hours:.1f}h"
+    if days < 14:                            # under two weeks
+        return f"{days:.1f}d"
+    weeks = days / 7
+    return f"{weeks:.1f}w"
+
+
 def _wrap_lines(p: ReceiptPrinter, text: str, *, indent: int = 0) -> None:
     """Word-wrap `text` to `p.CONTENT_WIDTH` with a leading indent on every line."""
     pad = " " * indent
@@ -413,7 +434,7 @@ def _section_server(p: ReceiptPrinter, data: dict) -> None:
 
     # Top: identifying info as a key/value table.
     styles.kv_line(p, "Host",       data.get("host", "?"))
-    styles.kv_line(p, "Uptime",     f"{data.get('uptime_days', 0):.1f}d")
+    styles.kv_line(p, "Uptime",     _format_uptime(data.get("uptime_days", 0)))
     styles.kv_line(
         p, "Load 1/5/15",
         f"{data.get('load_1m', 0)} "
