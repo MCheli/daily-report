@@ -216,9 +216,19 @@ _PAGE = """<!DOCTYPE html>
     color: #eee;
     cursor: pointer;
     border-radius: 4px;
+    margin: 0 4px;
   }}
   .topbar button:hover {{ background: #555; }}
+  .topbar button.print {{ background: #2d6a3a; border-color: #3d8a4a; }}
+  .topbar button.print:hover {{ background: #3a8048; }}
+  .topbar button:disabled {{ opacity: 0.6; cursor: wait; }}
   .topbar .meta {{ color: #888; margin-left: 12px; font-size: 13px; }}
+  .topbar .status {{
+    display: inline-block; margin-left: 12px; font-size: 13px;
+    font-family: monospace;
+  }}
+  .topbar .status.ok  {{ color: #6f6; }}
+  .topbar .status.err {{ color: #f88; }}
 
   .receipt {{
     background: #f8f6f1;
@@ -269,10 +279,41 @@ _PAGE = """<!DOCTYPE html>
 </head>
 <body>
 <div class="topbar">
-  <button onclick="location.reload()">Reload &uarr;</button>
+  <button id="reload" onclick="location.reload()">Reload &uarr;</button>
+  <button id="print" class="print" onclick="triggerPrint()">Print to thermal printer</button>
+  <span id="status" class="status"></span>
   <span class="meta">{meta}</span>
 </div>
 {body}
+<script>
+async function triggerPrint() {{
+  const btn = document.getElementById('print');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  status.className = 'status';
+  status.textContent = 'sending to printer...';
+  try {{
+    const resp = await fetch('/trigger', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{}}),
+    }});
+    const data = await resp.json();
+    if (data.status === 'ok') {{
+      status.className = 'status ok';
+      status.textContent = 'printed ' + (data.duration_s ? '(' + data.duration_s + 's)' : '');
+    }} else {{
+      status.className = 'status err';
+      status.textContent = 'failed: ' + (data.error || 'unknown');
+    }}
+  }} catch (e) {{
+    status.className = 'status err';
+    status.textContent = 'network error: ' + e;
+  }} finally {{
+    btn.disabled = false;
+  }}
+}}
+</script>
 </body>
 </html>
 """
@@ -333,6 +374,56 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(data)
+
+    def do_POST(self):
+        # The preview server is bound to 127.0.0.1 only, so /trigger can
+        # be open without auth - if you can hit it you're already on this
+        # machine.
+        if self.path != "/trigger":
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        import json as _json
+        import time as _time
+        import traceback as _tb
+
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            body = _json.loads(self.rfile.read(length)) if length else {}
+        except _json.JSONDecodeError:
+            body = {}
+        sections = body.get("sections") or None
+
+        started = _time.time()
+        try:
+            from . import report
+            # Server-level kwargs may already carry a `sections` value from
+            # the CLI flag; pop it so the request body wins.
+            kwargs = dict(self.server.report_kwargs)  # type: ignore[attr-defined]
+            kwargs.pop("sections", None)
+            report.generate(sections=sections, **kwargs)
+            resp = {
+                "status": "ok",
+                "sections": sections or "all",
+                "duration_s": round(_time.time() - started, 2),
+            }
+            code = 200
+        except Exception as e:
+            _tb.print_exc()
+            resp = {
+                "status": "error",
+                "error": f"{type(e).__name__}: {e}",
+                "duration_s": round(_time.time() - started, 2),
+            }
+            code = 500
+
+        data = _json.dumps(resp).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def log_message(self, fmt, *args):
         # Quieter than the default stdout dump
