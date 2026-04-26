@@ -1,62 +1,153 @@
-"""Google Calendar source for the next few events.
+"""Google Calendar source via the ICS secret-URL feed.
 
-STUB: returns sample data marked `_stub: True`. Wiring this up has two
-realistic paths:
+Why ICS instead of gcalcli / OAuth?
+- We deploy on a headless homelab server, not a workstation.
+- gcalcli requires an interactive OAuth dance the first time it runs,
+  which doesn't work without a browser.
+- Service accounts don't work for personal Gmail (Workspace only).
+- Google publishes a per-calendar "Secret address in iCal format" URL
+  that returns the full calendar with no auth beyond keeping the URL
+  itself secret. Read-only, exactly what a daily report needs.
 
-  1. Google Calendar API directly — google-api-python-client + an OAuth
-     credentials.json + a stored refresh token. Most flexible.
-  2. Or use `gcalcli` if installed:
-        gcalcli agenda --tsv --details=description tomorrow "1 week"
-     and parse stdout. Simpler, no oauth dance to manage in this repo.
+How to get the URL:
+    Google Calendar -> Settings (gear) -> Settings -> select your calendar
+    in the left sidebar -> "Integrate calendar" -> copy the
+    "Secret address in iCal format" URL.
 
-Env vars to plumb through (when ready):
-    GCAL_CALENDAR_ID    primary or specific calendar id
-    GCAL_CREDENTIALS    path to oauth credentials.json
-    GCAL_TOKEN          path to refresh token
+Env vars:
+    CALENDAR_ICS_URL   the secret iCal URL above. Falls back to stub if unset.
 
-Expected return shape:
+Returns the same shape the renderer was already wired against:
     {
-        "next_events": [
-            {"start": ISO8601, "title": str, "location": str|None,
-             "duration_min": int},
-            ...
-        ],
-        "today_count":   int,
-        "week_count":    int,
+      "next_events":  [{"start": ISO, "title": str,
+                        "duration_min": int, "location": str|None}, ...],
+      "today_count":  int,
+      "week_count":   int,
     }
 """
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+import urllib.request
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional
+
+_USER_AGENT = "daily-report/1.0 (+https://github.com/MCheli/daily-report)"
 
 
-def summarize(*, n: int = 5) -> dict:
-    if not os.environ.get("GCAL_CREDENTIALS"):
-        # Sample calendar starting "now"
-        now = datetime.now().replace(minute=0, second=0, microsecond=0)
-        sample = [
-            ("Daily standup",            now + timedelta(hours=1),  15, "Zoom"),
-            ("1:1 with manager",         now + timedelta(hours=3),  30, None),
-            ("Architecture review",      now + timedelta(days=1, hours=2), 60, "Conf Rm 2"),
-            ("Dentist appointment",      now + timedelta(days=2, hours=4), 45, "Ashland"),
-            ("Quarterly planning",       now + timedelta(days=3, hours=1), 90, "Boston HQ"),
-        ]
-        return {
-            "_stub": True,
-            "next_events": [
-                {
-                    "start": s.isoformat(timespec="minutes"),
-                    "title": title,
-                    "duration_min": dur,
-                    "location": loc,
-                }
-                for title, s, dur, loc in sample[:n]
-            ],
-            "today_count": 2,
-            "week_count": 5,
-        }
-    raise NotImplementedError(
-        "Google Calendar client not yet wired up. Implement OAuth + fetch "
-        "in daily_report/sources/calendar.py and remove this raise."
+def _fetch_ics(url: str, *, timeout: float = 10.0) -> str:
+    req = urllib.request.Request(
+        url, headers={"User-Agent": _USER_AGENT, "Accept": "text/calendar"}
     )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
+def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
+    """Parse VEVENT blocks from an iCalendar feed.
+
+    We only need the bare minimum (start time, title, duration, location)
+    so it's not worth pulling the `icalendar` package as a dep - the
+    format is line-based and well-defined.
+    """
+    from icalendar import Calendar  # lazy import; only needed when wired
+
+    cal = Calendar.from_ical(ics_text)
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(days=horizon_days)
+
+    events: list[dict] = []
+    for component in cal.walk("VEVENT"):
+        start = component.get("dtstart")
+        if start is None:
+            continue
+        start_dt = start.dt
+        # All-day events come through as `date` rather than `datetime`
+        if isinstance(start_dt, datetime):
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+        else:
+            start_dt = datetime.combine(start_dt, datetime.min.time(),
+                                        tzinfo=timezone.utc)
+
+        if start_dt < now or start_dt > horizon:
+            continue
+
+        end = component.get("dtend")
+        duration_min = 0
+        if end is not None:
+            end_dt = end.dt
+            if isinstance(end_dt, datetime):
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+            else:
+                end_dt = datetime.combine(end_dt, datetime.min.time(),
+                                          tzinfo=timezone.utc)
+            duration_min = max(0, int((end_dt - start_dt).total_seconds() // 60))
+
+        title = str(component.get("summary") or "(no title)")
+        location = component.get("location")
+        events.append({
+            "start": start_dt.astimezone().isoformat(timespec="minutes"),
+            "title": title,
+            "duration_min": duration_min,
+            "location": str(location) if location else None,
+            "_start_dt": start_dt,
+        })
+
+    events.sort(key=lambda e: e["_start_dt"])
+    return events
+
+
+def summarize(*, horizon_days: int = 14, top_n: int = 5) -> dict:
+    """Return the next `top_n` events from the user's primary ICS feed."""
+    url = os.environ.get("CALENDAR_ICS_URL")
+    if not url:
+        return _stub(top_n=top_n)
+
+    try:
+        ics_text = _fetch_ics(url)
+        events = _parse_events(ics_text, horizon_days=horizon_days)
+    except Exception as e:
+        return {"error": f"calendar fetch failed: {type(e).__name__}: {e}"}
+
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    today_count = sum(1 for e in events if e["_start_dt"].date() == today)
+    week_count  = sum(1 for e in events if today <= e["_start_dt"].date() < week_end)
+
+    next_events = []
+    for e in events[:top_n]:
+        ev = {k: v for k, v in e.items() if not k.startswith("_")}
+        next_events.append(ev)
+
+    return {
+        "next_events": next_events,
+        "today_count": today_count,
+        "week_count":  week_count,
+    }
+
+
+def _stub(*, top_n: int = 5) -> dict:
+    now = datetime.now().replace(minute=0, second=0, microsecond=0)
+    sample = [
+        ("Daily standup",            now + timedelta(hours=1),  15, "Zoom"),
+        ("1:1 with manager",         now + timedelta(hours=3),  30, None),
+        ("Architecture review",      now + timedelta(days=1, hours=2), 60, "Conf Rm 2"),
+        ("Dentist appointment",      now + timedelta(days=2, hours=4), 45, "Ashland"),
+        ("Quarterly planning",       now + timedelta(days=3, hours=1), 90, "Boston HQ"),
+    ]
+    return {
+        "_stub": True,
+        "next_events": [
+            {
+                "start": s.isoformat(timespec="minutes"),
+                "title": title,
+                "duration_min": dur,
+                "location": loc,
+            }
+            for title, s, dur, loc in sample[:top_n]
+        ],
+        "today_count": 2,
+        "week_count": 5,
+    }

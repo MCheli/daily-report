@@ -6,3 +6,4 @@ qrcode>=7.4
 yfinance>=0.2.40
 anthropic>=0.40.0
 python-dotenv>=1.0
+icalendar>=5.0
