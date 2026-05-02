@@ -568,14 +568,12 @@ DEFAULT_ORDER = [
     "motivation",   # quote of the day - sets the tone
     "tasks",
     "ai_summary",   # synthesis still uses ALL collected data regardless of position
+    "tallied",      # last-3-days transactions, suppresses itself when empty
     "weather",
     "calendar",
     "stocks",
     "power",
     "server",
-    # Note: `tallied` is intentionally NOT in the default order right now;
-    # call it explicitly via /trigger {"sections": [..., "tallied"]} when
-    # you want it. Re-add here if you want it on every print.
 ]
 
 
