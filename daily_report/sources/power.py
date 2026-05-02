@@ -74,7 +74,16 @@ def _safe_float(s: dict) -> float | None:
 
 
 def summarize(*, days: int = 7) -> dict:
-    """Pull today's kWh, current/peak W, and last `days` daily totals."""
+    """Pull today's kWh, current/peak W, and last `days` daily totals.
+
+    The energy entity is consumed as a raw reading and we compute per-day
+    deltas client-side. This way it doesn't matter whether the sensor is:
+      - daily-reset (utility_meter): each day's total = max value that day
+      - monotonically increasing (raw kWh counter): each day's total =
+        today's last value - yesterday's last value
+    A negative delta (would imply a reset) is treated as the post-reset
+    "today's consumption so far," which is exactly today's last value.
+    """
     token = os.environ.get("HOME_ASSISTANT_TOKEN")
     if not token:
         return _stub(days=days)
@@ -86,20 +95,20 @@ def summarize(*, days: int = 7) -> dict:
         watts_state = _state(base_url, token, POWER_ENTITY)
         current_w = _safe_float(watts_state) or 0.0
 
-        # Today's kWh so far (utility_meter resets at midnight)
+        # Current energy reading (could be cumulative or daily-reset).
         energy_state = _state(base_url, token, ENERGY_ENTITY)
-        today_kwh = _safe_float(energy_state) or 0.0
+        current_energy = _safe_float(energy_state) or 0.0
 
         now = datetime.now(timezone.utc)
-        # Pull a window long enough to cover `days+1` local days so we can
-        # bucket by local date without missing the edges.
+        # Pull `days + 1` calendar days of history so we have a comparison
+        # point for the earliest day in the chart.
         start = now - timedelta(days=days + 1)
 
-        # by_day: take MAX value within each local date as the day's total
-        # (right before midnight reset). Today's bucket reflects the
-        # current value since the reset hasn't happened yet.
         energy_history = _history(base_url, token, ENERGY_ENTITY, start, now)
-        max_per_day: dict[date, float] = defaultdict(float)
+
+        # Take the LAST value seen within each local date (or the MAX,
+        # which is equivalent for both monotonic and daily-reset sensors).
+        last_per_day: dict[date, float] = {}
         for s in energy_history:
             ts_str = s.get("last_changed") or s.get("last_updated")
             if not ts_str:
@@ -112,22 +121,45 @@ def summarize(*, days: int = 7) -> dict:
             if v is None:
                 continue
             d = ts.astimezone().date()
-            if v > max_per_day[d]:
-                max_per_day[d] = v
+            if d not in last_per_day or v > last_per_day[d]:
+                last_per_day[d] = v
 
-        # Build the last `days` calendar days (filling zeros for days with
-        # no recorded data).
+        # Build daily deltas. For a monotonic counter, delta is the day's
+        # consumption. For a daily-reset sensor, delta would go negative
+        # at midnight rollover -> treat that as "the day's total IS the
+        # day's max."
+        sorted_days = sorted(last_per_day.keys())
+        daily_kwh: dict[date, float] = {}
+        for i, d in enumerate(sorted_days):
+            if i == 0:
+                continue   # need a previous day to diff against
+            delta = last_per_day[d] - last_per_day[sorted_days[i - 1]]
+            if delta < 0:
+                delta = last_per_day[d]    # post-reset
+            daily_kwh[d] = delta
+
+        # Today's consumption so far: current reading minus yesterday's
+        # last value, with the same negative-means-reset rule.
         today_local = datetime.now().date()
+        yesterday = today_local - timedelta(days=1)
+        prev = last_per_day.get(yesterday)
+        if prev is None:
+            today_kwh = current_energy
+        else:
+            today_kwh = current_energy - prev
+            if today_kwh < 0:
+                today_kwh = current_energy
+        # Make sure today's bucket reflects the live "so far" value too.
+        daily_kwh[today_local] = today_kwh
+
         by_day: list[tuple[str, float]] = []
         for offset in range(days - 1, -1, -1):
             d = today_local - timedelta(days=offset)
-            by_day.append((d.isoformat(), round(max_per_day.get(d, 0.0), 2)))
+            by_day.append((d.isoformat(), round(daily_kwh.get(d, 0.0), 2)))
 
-        yesterday_kwh = (
-            by_day[-2][1] if len(by_day) >= 2 else 0.0
-        )
+        yesterday_kwh = daily_kwh.get(yesterday, 0.0)
 
-        # Peak watts today (since local midnight)
+        # Peak watts today (since local midnight) - unchanged.
         local_midnight = datetime.now().replace(
             hour=0, minute=0, second=0, microsecond=0
         ).astimezone()
