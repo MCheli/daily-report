@@ -498,30 +498,10 @@ def _section_ai_summary(p: ReceiptPrinter, data: dict) -> None:
 
 
 def _header_subtitle(collected: dict) -> str:
-    """Day of week + a countdown to the next calendar event when we have one."""
-    now = datetime.now()
-    today = now.strftime("%a %b %d").upper()      # "THU APR 25"
-    cal = collected.get("calendar") or {}
-    events = cal.get("next_events") or []
-    if not events:
-        return today
-    try:
-        first = events[0]
-        from datetime import datetime as _dt
-        start = _dt.fromisoformat(first["start"])
-        days_until = (start.date() - now.date()).days
-        title_short = (first.get("title") or "").strip()[:18]
-        if not title_short:
-            return today
-        if days_until == 0:
-            tag = f"today: {title_short}"
-        elif days_until == 1:
-            tag = f"tomorrow: {title_short}"
-        else:
-            tag = f"{days_until}d to {title_short}"
-        return f"{today}  -  {tag}"
-    except (KeyError, ValueError, TypeError):
-        return today
+    """Day-of-week + month + day + year. The next-event countdown that
+    used to follow lived here for a while but proved repetitive in
+    practice."""
+    return datetime.now().strftime("%a %b %d %Y").upper()    # "FRI MAY 01 2026"
 
 
 # ---------- registry ----------
