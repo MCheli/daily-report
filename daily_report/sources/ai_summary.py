@@ -34,6 +34,18 @@ Hard rules - the previous version of this got these wrong:
 
   6. If nothing is genuinely notable in a category, skip it. A 2-sentence summary that says something real beats a 3-paragraph one with filler.
 
+  7. Tasks in this data have NO due dates. The `days_open` field is the
+     number of days since the task was created (or pushed into the current
+     cycle). It is NOT "days until due" or anything similar.
+
+     The word "due" is FORBIDDEN in any sentence about tasks. Do not write
+     "due today," "due soon," "due this week," "is due," or any other
+     phrasing implying a deadline. The data has no deadline information,
+     period - even if a task title sounds like it has an inherent
+     deadline (e.g. "RSVP," "submit X by Friday"), the data has no field
+     telling you when. You may say a task was "added today" (days_open=0)
+     or "open for N days" (otherwise), and that's it.
+
 Format:
   - 2-3 short paragraphs, one observation each
   - Separate paragraphs with a blank line (use \\n\\n in the output)
