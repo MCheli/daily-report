@@ -498,10 +498,10 @@ def _section_ai_summary(p: ReceiptPrinter, data: dict) -> None:
 
 
 def _header_subtitle(collected: dict) -> str:
-    """Day-of-week + month + day + year. The next-event countdown that
-    used to follow lived here for a while but proved repetitive in
-    practice."""
-    return datetime.now().strftime("%a %b %d %Y").upper()    # "FRI MAY 01 2026"
+    """Natural-English date: e.g. "Friday, May 1, 2026"."""
+    now = datetime.now()
+    # %-d strips the leading zero on Linux/macOS so we get "May 1" not "May 01".
+    return now.strftime("%A, %B %-d, %Y")
 
 
 # ---------- registry ----------
