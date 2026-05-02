@@ -160,17 +160,22 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send_json(200, {"status": "ok"})
             return
+        # Fast-load shell. Sets the session cookie so the in-browser Print
+        # button can call /trigger same-origin without bearer auth.
         if self.path in ("/", "/preview"):
+            self._send_html(200, preview.shell_html(), set_session=True)
+            return
+        # Heavy work: collect data + render. Returns JSON {html, meta}.
+        if self.path == "/render":
             try:
-                page = preview.generate_preview_html(**_generate_kwargs())
-                self._send_html(200, page, set_session=True)
+                payload = preview.generate_preview_data(**_generate_kwargs())
+                self._send_json(200, payload)
             except Exception:
                 err = traceback.format_exc()
-                self._send_html(
-                    500,
-                    f"<pre style='font-family:monospace;color:#faa;"
-                    f"background:#2b2b2b;padding:16px'>{html.escape(err)}</pre>",
-                )
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(err.encode("utf-8"))
             return
         if self.path in ("/favicon.ico", "/favicon.png"):
             self.send_response(404); self.end_headers(); return

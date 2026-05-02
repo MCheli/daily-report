@@ -197,6 +197,7 @@ _PAGE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <title>Daily Report Preview</title>
 <style>
+
   body {{
     background: #2b2b2b;
     color: #ddd;
@@ -221,7 +222,7 @@ _PAGE = """<!DOCTYPE html>
   .topbar button:hover {{ background: #555; }}
   .topbar button.print {{ background: #2d6a3a; border-color: #3d8a4a; }}
   .topbar button.print:hover {{ background: #3a8048; }}
-  .topbar button:disabled {{ opacity: 0.6; cursor: wait; }}
+  .topbar button:disabled {{ opacity: 0.4; cursor: not-allowed; }}
   .topbar .meta {{ color: #888; margin-left: 12px; font-size: 13px; }}
   .topbar .status {{
     display: inline-block; margin-left: 12px; font-size: 13px;
@@ -229,6 +230,35 @@ _PAGE = """<!DOCTYPE html>
   }}
   .topbar .status.ok  {{ color: #6f6; }}
   .topbar .status.err {{ color: #f88; }}
+
+  /* Loading state shown while /render is fetching */
+  .loader {{
+    text-align: center;
+    padding: 80px 0;
+    color: #888;
+  }}
+  .spinner {{
+    width: 44px;
+    height: 44px;
+    border: 4px solid #444;
+    border-top-color: #6f6;
+    border-radius: 50%;
+    margin: 0 auto 16px;
+    animation: spin 0.9s linear infinite;
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  .loader .label {{ font-family: monospace; font-size: 14px; }}
+  .loader .sub {{ font-family: monospace; font-size: 11px; color: #666; margin-top: 6px; }}
+  .render-error {{
+    background: #4a1f1f;
+    color: #faa;
+    padding: 16px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    font-family: monospace;
+    max-width: 800px;
+    margin: 0 auto;
+  }}
 
   .receipt {{
     background: #f8f6f1;
@@ -323,13 +353,167 @@ def render_full_page(events: list[dict], meta: str = "") -> str:
     return _PAGE.format(meta=html.escape(meta), body=_render_body(events))
 
 
+# ---------- shell page (instant load + spinner, fetches /render) ----------
+
+_SHELL_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Daily Report Preview</title>
+<style>
+  body { background: #2b2b2b; color: #ddd; margin: 0; padding: 24px;
+    font-family: -apple-system, system-ui, sans-serif; }
+  .topbar { text-align: center; margin-bottom: 24px; }
+  .topbar button {
+    font: inherit; padding: 8px 18px; border: 1px solid #555;
+    background: #444; color: #eee; cursor: pointer; border-radius: 4px;
+    margin: 0 4px;
+  }
+  .topbar button:hover { background: #555; }
+  .topbar button.print { background: #2d6a3a; border-color: #3d8a4a; }
+  .topbar button.print:hover { background: #3a8048; }
+  .topbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .topbar .meta { color: #888; margin-left: 12px; font-size: 13px; }
+  .topbar .status {
+    display: inline-block; margin-left: 12px; font-size: 13px;
+    font-family: monospace;
+  }
+  .topbar .status.ok  { color: #6f6; }
+  .topbar .status.err { color: #f88; }
+
+  .loader { text-align: center; padding: 80px 0; color: #888; }
+  .spinner {
+    width: 44px; height: 44px;
+    border: 4px solid #444; border-top-color: #6f6;
+    border-radius: 50%;
+    margin: 0 auto 16px;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader .label { font-family: monospace; font-size: 14px; }
+  .loader .sub   { font-family: monospace; font-size: 11px; color: #666; margin-top: 6px; }
+
+  .render-error {
+    background: #4a1f1f; color: #faa; padding: 16px; border-radius: 4px;
+    white-space: pre-wrap; font-family: monospace;
+    max-width: 800px; margin: 0 auto;
+  }
+
+  .receipt {
+    background: #f8f6f1; color: #222;
+    width: 360px; margin: 0 auto;
+    padding: 18px 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 11px; line-height: 1.15;
+    border-radius: 2px;
+  }
+  .line { min-height: 1em; white-space: pre; font-variant-ligatures: none; }
+  .align-center { text-align: center; }
+  .align-right  { text-align: right;  }
+  .bold      { font-weight: 700; }
+  .underline { text-decoration: underline; }
+  .big       { font-size: 22px; font-weight: 700; line-height: 1.05; }
+  .receipt img {
+    display: block; margin: 4px auto;
+    max-width: 100%; image-rendering: pixelated;
+  }
+  .cut {
+    text-align: center; color: #888;
+    border-top: 1px dashed #aaa;
+    margin: 10px -14px 0; padding: 6px 0 0;
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <button id="reload" onclick="location.reload()">Reload &uarr;</button>
+  <button id="print" class="print" disabled onclick="triggerPrint()">Print to thermal printer</button>
+  <span id="status" class="status">generating...</span>
+  <span class="meta" id="meta"></span>
+</div>
+
+<div id="content">
+  <div class="loader">
+    <div class="spinner"></div>
+    <div class="label">Generating report</div>
+    <div class="sub" id="elapsed">fetching live data + AI synthesis...</div>
+  </div>
+</div>
+
+<script>
+  // Tick a small "Ns elapsed" hint so the user knows the page isn't dead.
+  const _start = Date.now();
+  const _tick = setInterval(() => {
+    const el = document.getElementById('elapsed');
+    if (el) el.textContent = ((Date.now() - _start) / 1000).toFixed(1) + 's elapsed';
+  }, 200);
+
+  // Fetch the rendered receipt
+  fetch('/render').then(async (resp) => {
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error('HTTP ' + resp.status + ': ' + text);
+    }
+    return resp.json();
+  }).then(data => {
+    clearInterval(_tick);
+    document.getElementById('content').innerHTML = data.html;
+    document.getElementById('meta').textContent = data.meta || '';
+    document.getElementById('status').textContent = '';
+    document.getElementById('status').className = 'status';
+    document.getElementById('print').disabled = false;
+  }).catch(e => {
+    clearInterval(_tick);
+    document.getElementById('content').innerHTML =
+      '<div class="render-error">' + (e.stack || e.message || e) + '</div>';
+    document.getElementById('status').className = 'status err';
+    document.getElementById('status').textContent = 'render failed';
+  });
+
+  async function triggerPrint() {
+    const btn = document.getElementById('print');
+    const status = document.getElementById('status');
+    btn.disabled = true;
+    status.className = 'status';
+    status.textContent = 'sending to printer...';
+    try {
+      const resp = await fetch('/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await resp.json();
+      if (data.status === 'ok') {
+        status.className = 'status ok';
+        status.textContent = 'printed' + (data.duration_s ? ' (' + data.duration_s + 's)' : '');
+      } else {
+        status.className = 'status err';
+        status.textContent = 'failed: ' + (data.error || 'unknown');
+      }
+    } catch (e) {
+      status.className = 'status err';
+      status.textContent = 'network error: ' + e;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
+"""
+
+
+def shell_html() -> str:
+    """The fast-load shell page. Returns instantly; client JS fetches /render."""
+    return _SHELL_PAGE
+
+
 # ---------- preview generation ----------
 
-def generate_preview_html(**kwargs) -> str:
-    """Run `report.generate()` against a `PreviewPrinter` and return HTML."""
-    # Imported here to avoid a circular import at module load time.
+def _generate_events(**kwargs):
+    """Run report.generate against a PreviewPrinter, return its captured events."""
     from . import report
-
     captured: list[PreviewPrinter] = []
 
     def factory() -> PreviewPrinter:
@@ -338,9 +522,24 @@ def generate_preview_html(**kwargs) -> str:
         return p
 
     report.generate(printer_factory=factory, **kwargs)
-    if not captured:
-        return render_full_page([], meta="(no printer was created)")
-    return render_full_page(captured[0].events, meta="rendered just now")
+    return captured[0].events if captured else []
+
+
+def generate_preview_data(**kwargs) -> dict:
+    """Run the full report and return the body HTML + a meta string."""
+    events = _generate_events(**kwargs)
+    return {
+        "html": _render_body(events),
+        "meta": "rendered just now",
+    }
+
+
+def generate_preview_html(**kwargs) -> str:
+    """Synchronous full-page render. Kept for any caller that wants the
+    classic 'do everything before sending bytes' behavior. Most surfaces
+    should use shell_html() + /render instead so the page paints fast."""
+    events = _generate_events(**kwargs)
+    return render_full_page(events, meta="rendered just now")
 
 
 # ---------- HTTP server ----------
@@ -351,29 +550,39 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        try:
-            page = generate_preview_html(**self.server.report_kwargs)  # type: ignore[attr-defined]
-            data = page.encode("utf-8")
+
+        # Fast-load shell - returns instantly, JS fetches /render.
+        if self.path in ("/", "/preview"):
+            page = shell_html().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Length", str(len(page)))
             self.end_headers()
-            self.wfile.write(data)
-        except Exception:
-            import traceback
-            err = traceback.format_exc()
-            body = (
-                f'<!DOCTYPE html><html><body style="background:#2b2b2b;color:#ddd;'
-                f'font-family:monospace;padding:24px;"><div class="err" '
-                f'style="background:#4a1f1f;color:#faa;padding:16px;'
-                f'white-space:pre-wrap;">{html.escape(err)}</div>'
-                f'</body></html>'
-            )
-            data = body.encode("utf-8")
-            self.send_response(500)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(data)
+            self.wfile.write(page)
+            return
+
+        # Heavy work: live data fetch + render. Returns JSON {html, meta}.
+        if self.path == "/render":
+            import json as _json
+            try:
+                payload = generate_preview_data(**self.server.report_kwargs)  # type: ignore[attr-defined]
+                data = _json.dumps(payload).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except Exception:
+                import traceback
+                err = traceback.format_exc()
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(err.encode("utf-8"))
+            return
+
+        # Backwards-compat: anyone hitting an unknown GET gets a 404.
+        self.send_response(404); self.end_headers()
 
     def do_POST(self):
         # The preview server is bound to 127.0.0.1 only, so /trigger can
