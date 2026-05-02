@@ -11,24 +11,35 @@ from __future__ import annotations
 import json
 import os
 
-PROMPT_TEMPLATE = """You are writing the synthesis block at the top of a daily-brief receipt printed at 7 AM. The full report is laid out on the receipt below your text - the reader will see every section in detail. Your job is NOT to restate or summarize it. They can read it themselves.
+PROMPT_TEMPLATE = """You are writing 2-3 short observations at the top of a daily-brief receipt printed at 7 AM. The reader will see every section below in detail. Your job is to highlight what is *new or notable about TODAY*, not to recap the data.
 
-Your job is to be the part the reader cannot do alone: a meta-analysis that looks ACROSS sections to surface connections, patterns, anomalies, or implications they would miss from any single section.
+Lean into things that genuinely change day to day and are worth a quick observation:
+  - Weather changes vs the trend (cold snap, rain coming, big swing day-to-day)
+  - Stock movement worth flagging (a >2% daily move, or a notable break from the recent range)
+  - Spending anomalies (one unusually large transaction, a category spiking, total well above or below recent days)
+  - Power-consumption anomalies vs the recent baseline
+  - A calendar item that is *imminent* (today or tomorrow) or that appears to be NEW since the last few days
 
-Aim for one of these per paragraph:
-  - a connection between two+ sections (e.g. "first meeting at 8:30 + 29F low - layer up early")
-  - a pattern or trend (e.g. "6 personal tasks have been open 6+ days; momentum is slipping")
-  - an anomaly worth investigating (e.g. "yesterday's kWh spike doesn't match the mild weather - check the furnace")
-  - a recommended focus or risk for the day
+Hard rules - the previous version of this got these wrong:
 
-Hard rules:
-  - Do NOT list facts the receipt already shows (tasks, temps, prices, kWh, meetings)
-  - Do NOT enumerate. No "X is Y, Z is W" sentences.
-  - If you catch yourself writing "X is at Y" or "you have N tasks," rewrite as an implication
-  - Under 40 words total
-  - 2-3 short paragraphs separated by a blank line
+  1. The user's calendar is their PERSONAL calendar only. It is NOT their complete schedule. Do not draw conclusions about how busy or balanced their week is overall.
+
+  2. Do NOT infer the purpose of a calendar event. Only describe what is literally in the title. "Online Consultation" is not a "mental health consultation." If the title is ambiguous, leave it out.
+
+  3. Do NOT moralize about task progress. Open tasks are often reminders, not delinquencies. Phrases like "momentum is slipping," "consider whether priorities are crowding out," "these need concrete blocking time today" are forbidden. The user already knows what's on their list.
+
+  4. Do NOT comment on a calendar item more than 7 days out unless something about it has clearly changed. The same "block prep time" advice the day before would be repeating yourself.
+
+  5. Do NOT generate evergreen advice. Each observation must be specific to today's data.
+
+  6. If nothing is genuinely notable in a category, skip it. A 2-sentence summary that says something real beats a 3-paragraph one with filler.
+
+Format:
+  - 2-3 short paragraphs, one observation each
+  - Separate paragraphs with a blank line (use \\n\\n in the output)
   - Plain ASCII only (no emojis, no fancy quotes)
-  - Output only the paragraphs - no preamble, header, or sign-off
+  - Under 60 words total
+  - Output the paragraphs only - no preamble, header, or sign-off
 
 Data:
 {data}"""

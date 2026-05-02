@@ -468,10 +468,18 @@ def _section_ai_summary(p: ReceiptPrinter, data: dict) -> None:
     if _error_or_continue(p, data):
         return
     p.set(align="left")
-    text = data.get("summary", "")
-    # Wrap to content width
-    for paragraph in text.split("\n"):
-        words = paragraph.split()
+    text = (data.get("summary") or "").strip()
+
+    # Split on blank lines to get paragraphs, render each with word wrap,
+    # and guarantee a blank line between paragraphs regardless of how the
+    # model formatted its output.
+    paragraphs = [pp.strip() for pp in text.split("\n\n") if pp.strip()]
+    for i, para in enumerate(paragraphs):
+        if i > 0:
+            p.newline()
+        # Each paragraph may itself contain single newlines; treat them as
+        # soft wraps and re-flow.
+        words = para.replace("\n", " ").split()
         line = ""
         for w in words:
             if len(line) + len(w) + 1 > p.CONTENT_WIDTH:
@@ -481,6 +489,7 @@ def _section_ai_summary(p: ReceiptPrinter, data: dict) -> None:
                 line += w + " "
         if line.strip():
             p.text(line.rstrip() + "\n")
+
     if data.get("model"):
         p.newline()
         p.set(align="center")
