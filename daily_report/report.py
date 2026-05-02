@@ -565,15 +565,17 @@ SECTIONS: dict[str, Callable[[ReceiptPrinter, dict], None]] = {
 #   - homelab and github dropped from default print (mostly static / vanity);
 #     still callable via /trigger with {"sections": [...]}.
 DEFAULT_ORDER = [
-    "ai_summary",   # the punchline first - always reflects ALL collected data
+    "motivation",   # quote of the day - sets the tone
+    "tasks",
+    "ai_summary",   # synthesis still uses ALL collected data regardless of position
     "weather",
     "calendar",
-    "tasks",
+    "stocks",
     "power",
     "server",
-    "stocks",
-    "tallied",
-    "motivation",
+    # Note: `tallied` is intentionally NOT in the default order right now;
+    # call it explicitly via /trigger {"sections": [..., "tallied"]} when
+    # you want it. Re-add here if you want it on every print.
 ]
 
 
