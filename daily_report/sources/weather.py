@@ -12,11 +12,25 @@ Weather codes are WMO codes (0-99); we map to short human strings.
 from __future__ import annotations
 
 import json
+import os
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
 
 _USER_AGENT = "daily-report/1.0 (+https://github.com/MCheli/daily-report)"
+
+# Process-lifetime cache of geocoding results so we don't pay for a
+# second HTTP call every render once we've resolved a place.
+_GEOCODE_CACHE: dict[str, tuple[float, float, str]] = {}
+
+# Hardcoded fallback so the morning print doesn't rely on Open-Meteo's
+# geocoder being healthy at 7 AM. Used only when geocoding fails for
+# the default location string.
+_DEFAULT_FALLBACKS: dict[str, tuple[float, float, str]] = {
+    "ashland,ma": (42.2611, -71.4636, "Ashland, Massachusetts, US"),
+}
 
 
 # ---------- WMO weather code -> short description ----------
@@ -59,21 +73,55 @@ def _wmo_to_text(code: int | None) -> str:
     return _WMO.get(int(code), f"code {code}")
 
 
-def _get_json(url: str, *, timeout: float = 10.0) -> dict:
-    req = urllib.request.Request(
-        url, headers={"User-Agent": _USER_AGENT, "Accept": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+def _get_json(url: str, *, timeout: float = 10.0, attempts: int = 3) -> dict:
+    """GET JSON with a few retries. Open-Meteo flakes occasionally on the
+    first cold call of the day - one transient failure shouldn't kill
+    the whole weather section."""
+    last_err: Exception | None = None
+    for i in range(attempts):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": _USER_AGENT, "Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read())
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError,
+                json.JSONDecodeError) as e:
+            last_err = e
+            if i < attempts - 1:
+                time.sleep(0.5 * (i + 1))   # 0.5s, 1.0s, ...
+    assert last_err is not None
+    raise last_err
 
 
 def _geocode(name: str) -> tuple[float, float, str]:
     """Resolve a free-form place name to (lat, lon, resolved_name).
 
+    Sources, in priority order:
+      1. WEATHER_LAT + WEATHER_LON env vars (skip the network entirely)
+      2. process-lifetime cache from a prior successful resolution
+      3. Open-Meteo's geocoding endpoint
+      4. hardcoded fallback for known default locations
+
     Open-Meteo's geocoder doesn't honor "City, State"-formatted strings,
-    so when there's a comma we search by the city alone and filter the
-    results by state (admin1).
+    so when there's a comma we search by the city alone and filter by
+    state (admin1).
     """
+    # 1. Explicit env override
+    env_lat = os.environ.get("WEATHER_LAT")
+    env_lon = os.environ.get("WEATHER_LON")
+    if env_lat and env_lon:
+        try:
+            return float(env_lat), float(env_lon), name
+        except ValueError:
+            pass
+
+    # 2. Cache
+    cache_key = name.lower().strip()
+    if cache_key in _GEOCODE_CACHE:
+        return _GEOCODE_CACHE[cache_key]
+
     city = name
     state_hint: str | None = None
     if "," in name:
@@ -81,13 +129,22 @@ def _geocode(name: str) -> tuple[float, float, str]:
         city = city.strip()
         state_hint = state_hint.strip()
 
-    url = (
-        "https://geocoding-api.open-meteo.com/v1/search?"
-        + urllib.parse.urlencode({"name": city, "count": 50, "format": "json"})
-    )
-    data = _get_json(url)
-    results = data.get("results") or []
+    # 3. Open-Meteo geocoder. If it fails, fall back to a hardcoded
+    # default for known locations so the morning print isn't held
+    # hostage by a third-party flake.
+    try:
+        url = (
+            "https://geocoding-api.open-meteo.com/v1/search?"
+            + urllib.parse.urlencode({"name": city, "count": 50, "format": "json"})
+        )
+        data = _get_json(url)
+        results = data.get("results") or []
+    except Exception:
+        results = []
+
     if not results:
+        if cache_key in _DEFAULT_FALLBACKS:
+            return _DEFAULT_FALLBACKS[cache_key]
         raise RuntimeError(f"could not geocode location: {name!r}")
 
     if state_hint:
@@ -121,7 +178,9 @@ def _geocode(name: str) -> tuple[float, float, str]:
     r = results[0]
     label_parts = [r.get("name"), r.get("admin1"), r.get("country_code")]
     label = ", ".join(p for p in label_parts if p)
-    return float(r["latitude"]), float(r["longitude"]), label
+    out = (float(r["latitude"]), float(r["longitude"]), label)
+    _GEOCODE_CACHE[cache_key] = out
+    return out
 
 
 def summarize(location: str = "Ashland,MA", *, days: int = 5) -> dict:
