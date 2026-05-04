@@ -49,13 +49,17 @@ def _fetch_ics(url: str, *, timeout: float = 10.0) -> str:
 
 
 def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
-    """Parse VEVENT blocks from an iCalendar feed.
+    """Parse VEVENT blocks from an iCalendar feed, expanding recurrences.
 
-    We only need the bare minimum (start time, title, duration, location)
-    so it's not worth pulling the `icalendar` package as a dep - the
-    format is line-based and well-defined.
+    `icalendar.walk("VEVENT")` returns each VEVENT exactly once at its
+    original DTSTART — so a yearly-recurring birthday anchored to e.g.
+    2021-07-15 just looks like a 2021 event and gets filtered out as
+    "in the past". `recurring_ical_events` materialises RRULE/RDATE/
+    EXDATE/RECURRENCE-ID into concrete occurrences within a window,
+    which is the only way the family-birthdays feed surfaces anything.
     """
     from icalendar import Calendar  # lazy import; only needed when wired
+    import recurring_ical_events
 
     cal = Calendar.from_ical(ics_text)
     now = datetime.now(timezone.utc)
@@ -63,7 +67,7 @@ def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
     local_tz = datetime.now().astimezone().tzinfo
 
     events: list[dict] = []
-    for component in cal.walk("VEVENT"):
+    for component in recurring_ical_events.of(cal).between(now, horizon):
         start = component.get("dtstart")
         if start is None:
             continue
@@ -80,9 +84,6 @@ def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
             start_dt = start_val
             if start_dt.tzinfo is None:
                 start_dt = start_dt.replace(tzinfo=timezone.utc)
-
-        if start_dt < now or start_dt > horizon:
-            continue
 
         end = component.get("dtend")
         duration_min = 0
