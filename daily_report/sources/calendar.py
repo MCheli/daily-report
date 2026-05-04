@@ -16,6 +16,11 @@ How to get the URL:
 
 Env vars:
     CALENDAR_ICS_URL   the secret iCal URL above. Falls back to stub if unset.
+                       Accepts a comma-separated list to merge multiple
+                       calendars (e.g. personal + shared birthdays + US
+                       holidays). Events from all feeds are merged and
+                       sorted chronologically; the renderer doesn't care
+                       which calendar an event came from.
 
 Returns the same shape the renderer was already wired against:
     {
@@ -55,20 +60,26 @@ def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
     cal = Calendar.from_ical(ics_text)
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(days=horizon_days)
+    local_tz = datetime.now().astimezone().tzinfo
 
     events: list[dict] = []
     for component in cal.walk("VEVENT"):
         start = component.get("dtstart")
         if start is None:
             continue
-        start_dt = start.dt
-        # All-day events come through as `date` rather than `datetime`
-        if isinstance(start_dt, datetime):
+        start_val = start.dt
+        # All-day events arrive as `date` rather than `datetime`. Store them
+        # at midnight LOCAL (not UTC) so astimezone() round-trips don't slide
+        # them onto the previous evening — a birthday on May 5 should display
+        # as "May 5", not "May 4 at 8:00 PM".
+        all_day = not isinstance(start_val, datetime)
+        if all_day:
+            start_dt = datetime.combine(start_val, datetime.min.time(),
+                                        tzinfo=local_tz)
+        else:
+            start_dt = start_val
             if start_dt.tzinfo is None:
                 start_dt = start_dt.replace(tzinfo=timezone.utc)
-        else:
-            start_dt = datetime.combine(start_dt, datetime.min.time(),
-                                        tzinfo=timezone.utc)
 
         if start_dt < now or start_dt > horizon:
             continue
@@ -92,6 +103,7 @@ def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
             "title": title,
             "duration_min": duration_min,
             "location": str(location) if location else None,
+            "all_day": all_day,
             "_start_dt": start_dt,
         })
 
@@ -100,16 +112,27 @@ def _parse_events(ics_text: str, *, horizon_days: int = 14) -> list[dict]:
 
 
 def summarize(*, horizon_days: int = 90, top_n: int = 5) -> dict:
-    """Return the next `top_n` events from the user's primary ICS feed."""
-    url = os.environ.get("CALENDAR_ICS_URL")
-    if not url:
+    """Return the next `top_n` events merged across all configured ICS feeds."""
+    raw = os.environ.get("CALENDAR_ICS_URL")
+    if not raw:
         return _stub(top_n=top_n)
 
-    try:
-        ics_text = _fetch_ics(url)
-        events = _parse_events(ics_text, horizon_days=horizon_days)
-    except Exception as e:
-        return {"error": f"calendar fetch failed: {type(e).__name__}: {e}"}
+    urls = [u.strip() for u in raw.split(",") if u.strip()]
+    events: list[dict] = []
+    failures: list[str] = []
+    for url in urls:
+        try:
+            ics_text = _fetch_ics(url)
+            events.extend(_parse_events(ics_text, horizon_days=horizon_days))
+        except Exception as e:
+            failures.append(f"{type(e).__name__}: {e}")
+
+    if failures and not events:
+        # Every feed failed — surface the error rather than silently empty.
+        return {"error": "calendar fetch failed: " + "; ".join(failures)}
+
+    # Re-sort the merged list (each feed is sorted, but interleaving isn't).
+    events.sort(key=lambda e: e["_start_dt"])
 
     today = date.today()
     week_end = today + timedelta(days=7)

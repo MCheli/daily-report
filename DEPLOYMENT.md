@@ -93,8 +93,9 @@ TASKS_API_KEY=tsk_...
 # Home Assistant (home.markcheli.com — long-lived access token)
 HOME_ASSISTANT_TOKEN=eyJ...
 
-# Google Calendar ICS secret URL
-CALENDAR_ICS_URL=https://calendar.google.com/calendar/ical/.../private-.../basic.ics
+# Google Calendar ICS secret URL(s) - comma-separated for multiple calendars
+# (e.g. personal + shared birthdays + US holidays).
+CALENDAR_ICS_URL=https://calendar.google.com/calendar/ical/.../private-.../basic.ics,https://calendar.google.com/calendar/ical/.../public/basic.ics
 
 # API auth (any random string; required header is `Authorization: Bearer <token>`)
 DAILY_REPORT_API_TOKEN=<pick-a-strong-random-string>

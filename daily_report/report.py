@@ -258,18 +258,23 @@ def _section_calendar(p: ReceiptPrinter, data: dict) -> None:
             rel = f"in {days_until}d"
 
         # Header row: bold "Fri May 1  8:00 PM" on the left, "in 6d" right.
+        # All-day events (birthdays, holidays) skip the time portion.
         date_str = dt.strftime("%a %b %d")
-        time_str = dt.strftime("%I:%M %p").lstrip("0")
-        left = f"{date_str}  {time_str}"
+        if ev.get("all_day"):
+            left = date_str
+        else:
+            time_str = dt.strftime("%I:%M %p").lstrip("0")
+            left = f"{date_str}  {time_str}"
         pad = max(1, p.CONTENT_WIDTH - len(left) - len(rel))
         p.set(bold=True)
         p.text(f"{left}{' ' * pad}{rel}\n")
         p.set(bold=False)
 
         # Title row(s), word-wrapped under a 3-space indent.
+        # `> 24h` (not `>=`) so single-day all-day events don't get "[1d trip]".
         title = ev.get("title", "(no title)")
         duration_min = ev.get("duration_min") or 0
-        if duration_min >= 24 * 60:
+        if duration_min > 24 * 60:
             days_long = duration_min // (24 * 60)
             title = f"{title}  [{days_long}d trip]"
         _wrap_lines(p, title, indent=3)
@@ -514,7 +519,7 @@ COLLECTORS: dict[str, Callable[[dict], dict]] = {
     "tasks":      lambda kw: tasks.summarize(),
     "tallied":    lambda kw: tallied.summarize(days=kw.get("tallied_days", 3)),
     "stocks":     lambda kw: stocks.summarize(ticker=kw.get("stock_ticker", "PTC")),
-    "calendar":   lambda kw: calendar.summarize(),
+    "calendar":   lambda kw: calendar.summarize(top_n=8),
     "motivation": lambda kw: motivation.summarize(),
     "weather":    lambda kw: weather.summarize(location=kw.get("weather_location", "Ashland,MA")),
     "power":      lambda kw: power.summarize(),
