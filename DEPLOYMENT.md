@@ -49,7 +49,7 @@ preferably near `tasks` / `tallied` for grouping:
     env_file: .env
     environment:
       - TZ=America/New_York
-      - REPORT_TIMES=07:00
+      - REPORT_TIMES=05:00
       - PROM_URL=http://prometheus:9090
       - DAILY_REPORT_PORT=8080
       # Pull-throughs from .env (defined in the Environment section below):
@@ -154,13 +154,13 @@ you're comfortable rotating the keys later.
 
 ## Schedule
 
-The report prints **once a day at 07:00 local time** by default
-(`REPORT_TIMES=07:00`, `TZ=America/New_York`).
+The report prints **once a day at 05:00 local time** by default
+(`REPORT_TIMES=05:00`, `TZ=America/New_York`).
 
 To print at multiple times, comma-separate:
 
 ```yaml
-- REPORT_TIMES=07:00,18:00
+- REPORT_TIMES=05:00,18:00
 ```
 
 ## Browser preview
@@ -248,7 +248,7 @@ server {
 After `docker compose up -d daily-report`:
 
 - [ ] `docker compose ps daily-report` shows `running` + `healthy`
-- [ ] `docker compose logs daily-report` shows `[schedule] daily print at 07:00`
+- [ ] `docker compose logs daily-report` shows `[schedule] daily print at 05:00`
       and `daily-report service on http://0.0.0.0:8080`
 - [ ] `curl http://localhost:8080/health` returns 200 from the host
 - [ ] `docker compose exec daily-report curl -fsS http://prometheus:9090/-/healthy`
@@ -256,7 +256,7 @@ After `docker compose up -d daily-report`:
 - [ ] `docker compose exec daily-report sh -c 'echo > /dev/tcp/192.168.1.147/9100'`
       succeeds (so the printer is reachable)
 - [ ] `curl http://localhost:8080/preview` renders HTML with all sections
-- [ ] First scheduled print at 07:00 produces a real receipt
+- [ ] First scheduled print at 05:00 produces a real receipt
 
 ## Updating
 
@@ -271,7 +271,7 @@ image: ghcr.io/mcheli/daily-report:391e090
 
 | Symptom | Likely cause |
 |---|---|
-| `/health` returns 200 but no print at 07:00 | Container TZ wrong; verify with `docker compose exec daily-report date` |
+| `/health` returns 200 but no print at 05:00 | Container TZ wrong; verify with `docker compose exec daily-report date` |
 | Server section shows `"prometheus unreachable"` | Service not on the `infrastructure` network |
 | Tallied / tasks / power section returns `"_stub": true` | Corresponding env var missing — check the **Environment** section |
 | 401 on `POST /trigger` | Missing or wrong `Authorization: Bearer <DAILY_REPORT_API_TOKEN>` |
