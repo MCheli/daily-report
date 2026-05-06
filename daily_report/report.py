@@ -400,7 +400,7 @@ def _section_power(p: ReceiptPrinter, data: dict) -> None:
     if _error_or_continue(p, data):
         return
     _stub_marker(p, data)
-    # At 7 AM, "today" is mostly empty so make YESTERDAY the headline.
+    # At 5 AM, "today" is mostly empty so make YESTERDAY the headline.
     charts.kpi_card(p, "YESTERDAY", data.get("yesterday_kwh", 0.0), suffix=" kWh")
 
     # 7-day chart as a matplotlib bar image (matches the weather forecast

@@ -26,7 +26,7 @@ _USER_AGENT = "daily-report/1.0 (+https://github.com/MCheli/daily-report)"
 _GEOCODE_CACHE: dict[str, tuple[float, float, str]] = {}
 
 # Hardcoded fallback so the morning print doesn't rely on Open-Meteo's
-# geocoder being healthy at 7 AM. Used only when geocoding fails for
+# geocoder being healthy at 5 AM. Used only when geocoding fails for
 # the default location string.
 _DEFAULT_FALLBACKS: dict[str, tuple[float, float, str]] = {
     "ashland,ma": (42.2611, -71.4636, "Ashland, Massachusetts, US"),

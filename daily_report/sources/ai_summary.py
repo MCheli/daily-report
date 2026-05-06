@@ -11,13 +11,24 @@ from __future__ import annotations
 import json
 import os
 
-PROMPT_TEMPLATE = """You are writing 2-3 short observations at the top of a daily-brief receipt printed at 7 AM. The reader will see every section below in detail. Your job is to highlight what is *new or notable about TODAY*, not to recap the data.
+PROMPT_TEMPLATE = """You are writing 2-3 short observations at the top of a daily-brief receipt printed at 5 AM. The reader will see every section below in detail. Your job is to highlight what is *new or notable about TODAY*, not to recap the data.
+
+Because this runs in the pre-dawn hours, "today" is essentially empty for
+any source that accumulates over the day:
+  - power.today_kwh and power.peak_w_today reflect only ~5 hours of usage
+    and will ALWAYS look low compared to a full day. Do not flag this as
+    unusual. Use power.yesterday_kwh and power.by_day for the baseline,
+    and only call out energy if YESTERDAY (or a clear multi-day trend)
+    breaks meaningfully from the recent range.
+  - Same idea for any other "so far today" total: judge against
+    completed days, not against a partial morning.
 
 Lean into things that genuinely change day to day and are worth a quick observation:
   - Weather changes vs the trend (cold snap, rain coming, big swing day-to-day)
   - Stock movement worth flagging (a >2% daily move, or a notable break from the recent range)
   - Spending anomalies (one unusually large transaction, a category spiking, total well above or below recent days)
-  - Power-consumption anomalies vs the recent baseline
+  - Power-consumption anomalies vs the recent baseline (using YESTERDAY or
+    the multi-day trend, not the partial "today")
   - A calendar item that is *imminent* (today or tomorrow) or that appears to be NEW since the last few days
 
 Hard rules - the previous version of this got these wrong:
