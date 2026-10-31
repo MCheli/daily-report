@@ -465,8 +465,10 @@ _SHELL_PAGE = """<!DOCTYPE html>
     document.getElementById('print').disabled = false;
   }).catch(e => {
     clearInterval(_tick);
-    document.getElementById('content').innerHTML =
-      '<div class="render-error">' + (e.stack || e.message || e) + '</div>';
+    const errBox = document.createElement('div');
+    errBox.className = 'render-error';
+    errBox.textContent = e.stack || e.message || e;
+    document.getElementById('content').replaceChildren(errBox);
     document.getElementById('status').className = 'status err';
     document.getElementById('status').textContent = 'render failed';
   });
