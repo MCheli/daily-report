@@ -58,8 +58,9 @@ for k in "${keys[@]}"; do
   echo "$line" >> "$tmp"
 done
 
-scp -q "$tmp" "${target}:${remote_path}"
-ssh -q "$target" "chmod 600 ${remote_path}"
+# Create the remote file 0600 from the start (scp + chmod left a window
+# where it was world-readable under the default umask).
+ssh -q "$target" "umask 077 && cat > ${remote_path}" < "$tmp"
 
 cat <<EOF
 Uploaded $(wc -l < "$tmp") lines to ${target}:${remote_path}
