@@ -9,3 +9,6 @@ python-dotenv>=1.0
 icalendar>=5.0
 recurring-ical-events>=2.2
 schedule>=1.2
+# yfinance pulls curl_cffi, which statically bundles libbrotli. 0.17.0 ships
+# brotli 1.2.1 (CVE-2026-111497 fixed); keep older builds out.
+curl_cffi>=0.17.0

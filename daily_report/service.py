@@ -22,6 +22,8 @@ they're behind the homelab's LAN-only nginx anyway.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import html
 import json
 import os
@@ -98,12 +100,19 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ----- helpers -----
 
+    def _session_value(self) -> str:
+        # Derived from the token so the raw bearer token is never handed
+        # out in a Set-Cookie to whoever loads the preview page.
+        return hmac.new(
+            self.api_token.encode(), b"dr_session", hashlib.sha256
+        ).hexdigest()
+
     def _check_auth(self) -> bool:
         if not self.api_token:
             return True
         # Bearer header (CLI, scripts)
         got = self.headers.get("Authorization", "")
-        if got == f"Bearer {self.api_token}":
+        if hmac.compare_digest(got.encode(), f"Bearer {self.api_token}".encode()):
             return True
         # Session cookie set by GET / so the in-browser Print button on
         # the preview page can trigger without exposing the token to JS.
@@ -111,7 +120,9 @@ class _Handler(BaseHTTPRequestHandler):
             if "=" not in chunk:
                 continue
             k, v = chunk.split("=", 1)
-            if k.strip() == "dr_session" and v.strip() == self.api_token:
+            if k.strip() == "dr_session" and hmac.compare_digest(
+                v.strip().encode(), self._session_value().encode()
+            ):
                 return True
         return False
 
@@ -120,7 +131,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not self.api_token:
             return None
         return (
-            f"dr_session={self.api_token}; HttpOnly; SameSite=Strict; "
+            f"dr_session={self._session_value()}; HttpOnly; SameSite=Strict; "
             f"Path=/; Max-Age=86400"
         )
 
