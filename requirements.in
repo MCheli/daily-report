@@ -1,0 +1,17 @@
+# Direct dependencies and the ranges we accept. Edit this file, then regenerate the pinned
+# lockfile that the Dockerfile installs:
+#   uv pip compile requirements.in -o requirements.txt --python-version 3.12 --python-platform x86_64-manylinux_2_28
+python-escpos>=3.1
+Pillow>=10.0
+matplotlib>=3.8
+numpy>=1.26
+qrcode>=7.4
+yfinance>=0.2.40
+anthropic>=0.40.0
+python-dotenv>=1.0
+icalendar>=5.0
+recurring-ical-events>=2.2
+schedule>=1.2
+# yfinance pulls curl_cffi, which statically bundles libbrotli. 0.17.0 ships
+# brotli 1.2.1 (CVE-2026-111497 fixed); keep older builds out.
+curl_cffi>=0.17.0

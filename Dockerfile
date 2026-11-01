@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim
+# Exact patch + Debian release, matching production, so Dependabot can move it and a retag
+# can't silently switch distro.
+FROM python:3.12.16-slim-trixie
 
 # Timezone for the schedule library to fire at the right local time.
 # Override at run-time with -e TZ=America/New_York if you want to
@@ -9,7 +11,9 @@ ENV TZ=America/New_York \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
+# `upgrade` takes Debian security fixes newer than the base tag.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends tzdata curl \
  && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime \
  && dpkg-reconfigure -f noninteractive tzdata \
@@ -17,6 +21,8 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# requirements.txt is the pinned lockfile (compiled from requirements.in), so a rebuild
+# never pulls new library versions.
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
