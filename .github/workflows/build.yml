@@ -3,6 +3,13 @@ name: Build and Publish Docker Image
 on:
   push:
     branches: [main]
+  # PRs build and smoke-test the image but never log in or push.
+  pull_request:
+    branches: [main]
+  # Weekly rebuild on a freshly pulled base so OS security fixes land without a code change.
+  # Friday 08:00 UTC, so Saturday's security sweep sees the result.
+  schedule:
+    - cron: '0 8 * * 5'
   workflow_dispatch:
 
 env:
@@ -11,6 +18,8 @@ env:
 
 jobs:
   build:
+    # Watchtower deploys :latest, so only main ever publishes (manual runs on other branches skip).
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,6 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -41,13 +51,33 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - name: Build and push
+      - name: Build
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          push: false
+          pull: ${{ github.event_name == 'schedule' }}
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            daily-report:smoke
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # There are no unit tests; publish only an image whose modules and native libraries
+      # (matplotlib, Pillow, numpy, curl_cffi) import. Nothing here talks to the printer.
+      - name: Smoke test the image
+        run: |
+          docker run --rm -e MPLBACKEND=Agg daily-report:smoke python -c \
+            "import daily_report.cli, daily_report.service, daily_report.report, daily_report.charts, daily_report.preview, matplotlib.pyplot, PIL, numpy, yfinance, curl_cffi"
+          docker run --rm daily-report:smoke python -m daily_report.cli --help
+
+      - name: Push
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do docker push "$tag"; done
