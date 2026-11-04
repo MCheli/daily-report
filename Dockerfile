@@ -11,10 +11,11 @@ ENV TZ=America/New_York \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
-# `upgrade` takes Debian security fixes newer than the base tag.
+# `upgrade` takes Debian security fixes newer than the base tag. No curl: the healthcheck
+# uses Python, and curl_cffi bundles its own libcurl.
 RUN apt-get update \
  && apt-get upgrade -y \
- && apt-get install -y --no-install-recommends tzdata curl \
+ && apt-get install -y --no-install-recommends tzdata \
  && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime \
  && dpkg-reconfigure -f noninteractive tzdata \
  && rm -rf /var/lib/apt/lists/*
@@ -24,7 +25,9 @@ WORKDIR /app
 # requirements.txt is the pinned lockfile (compiled from requirements.in), so a rebuild
 # never pulls new library versions.
 COPY requirements.txt ./
-RUN pip install -r requirements.txt
+# pip itself is pin-bumped past the base image's copy (pip advisories).
+RUN pip install pip==26.3 \
+ && pip install -r requirements.txt
 
 COPY daily_report ./daily_report
 COPY examples ./examples
@@ -35,7 +38,7 @@ EXPOSE 8080
 
 # Health check hits the /health endpoint
 HEALTHCHECK --interval=60s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fsS http://localhost:8080/health || exit 1
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4).read()"]
 
 # Default to running the long-lived service. Override with
 #   docker run ... python -m daily_report.cli report
