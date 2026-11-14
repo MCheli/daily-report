@@ -83,6 +83,7 @@ jobs:
           [ "$(docker inspect -f '{{.State.Health.Status}}' smoke)" = healthy ]
           docker rm -f smoke
           docker run --rm --entrypoint sh daily-report:smoke -c '! command -v curl'
+          docker run --rm --entrypoint sh daily-report:smoke -c '[ "$(id -u)" != 0 ]'
           docker image inspect -f 'image size: {{.Size}} bytes' daily-report:smoke
           docker run --rm --entrypoint sh daily-report:smoke -c 'echo "dpkg packages: $(dpkg-query -W | wc -l)"'
 
