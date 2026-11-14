@@ -122,6 +122,8 @@ requests==2.34.2
     # via yfinance
 schedule==1.2.2
     # via -r requirements.in
+setuptools==84.2.1
+    # via python-escpos
 six==1.17.0
     # via
     #   python-dateutil
@@ -137,7 +139,10 @@ truststore==0.10.5
 typing-extensions==4.16.0
     # via
     #   anthropic
+    #   anyio
     #   beautifulsoup4
+    #   httpx2
+    #   icalendar
     #   opentelemetry-api
     #   pydantic
     #   pydantic-core
