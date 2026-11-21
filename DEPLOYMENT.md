@@ -62,7 +62,8 @@ preferably near `tasks` / `tallied` for grouping:
     networks:
       - infrastructure
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      # The image has no curl; this mirrors the Dockerfile HEALTHCHECK.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4).read()"]
       interval: 30s
       timeout: 5s
       retries: 3
