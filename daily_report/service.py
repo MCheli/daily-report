@@ -145,6 +145,12 @@ class _Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
+    def end_headers(self) -> None:
+        # Baseline hardening on every response, including the raw 404/500 paths.
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        super().end_headers()
+
     def _send_json(self, code: int, body: dict) -> None:
         data = json.dumps(body).encode()
         self.send_response(code)
