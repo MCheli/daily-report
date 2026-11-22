@@ -33,6 +33,11 @@ COPY daily_report ./daily_report
 COPY examples ./examples
 COPY README.md DEPLOYMENT.md TODO.md ./
 
+# Run unprivileged. The app only needs outbound TCP (printer :9100, APIs) and :8080; its home
+# dir holds the matplotlib/yfinance caches, and /app stays root-owned and read-only to it.
+RUN useradd --system --create-home --uid 10001 --user-group app
+USER app
+
 # HTTP API
 EXPOSE 8080
 
