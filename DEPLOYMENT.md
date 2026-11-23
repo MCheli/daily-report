@@ -164,6 +164,14 @@ To print at multiple times, comma-separate:
 - REPORT_TIMES=05:00,18:00
 ```
 
+To pause printing without stopping the container (the HTML preview and
+`/trigger` keep working), set it empty and recreate the service; the log then
+says `scheduled prints disabled`:
+
+```yaml
+- REPORT_TIMES=
+```
+
 ## Browser preview
 
 The same HTML preview that's available locally during development is built
