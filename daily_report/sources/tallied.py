@@ -8,42 +8,56 @@ Env vars:
     TALLIED_API_KEY    required for live data
     TALLIED_API_URL    optional, defaults to https://money.markcheli.com
 
-API shape we depend on:
-    GET /api/transactions/?limit=1000
+API shape we depend on (Tallied serves its API under /api/v1/):
+    GET /api/v1/transactions/?from_date=yyyy-mm-dd&limit=500&offset=0
         -> {"items": [{"id","date","amount","merchant","category", ...}, ...],
             "total": int}
+    Newest first; `limit` is capped at 500 server-side, so we page with
+    `offset` until we have `total` items.
     `amount` is signed: negative = expense, positive = income.
     `date` is ISO yyyy-mm-dd.
-    The `since=` query param is silently ignored on this build, so we filter
-    client-side.
 """
 from __future__ import annotations
 
 import json
 import os
+import urllib.parse
 import urllib.request
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Optional
 
 DEFAULT_API_URL = "https://money.markcheli.com"
+PAGE_SIZE = 500     # server-side maximum for `limit`
+MAX_PAGES = 20      # safety stop so a bad `total` can't loop forever
 
 
-def _fetch(api_key: str, api_url: str, *, timeout: float = 10.0) -> list[dict]:
-    url = f"{api_url.rstrip('/')}/api/transactions/?limit=500"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "X-API-Key": api_key,
-            # Cloudflare in front of money.markcheli.com 403s the default
-            # `Python-urllib/3.x` UA. Send something innocuous instead.
-            "User-Agent": "daily-report/1.0 (+https://github.com/MCheli/daily-report)",
-            "Accept": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(resp.read())
-    return body.get("items", [])
+def _fetch(api_key: str, api_url: str, *, from_date: date,
+           timeout: float = 10.0) -> list[dict]:
+    items: list[dict] = []
+    for page in range(MAX_PAGES):
+        query = urllib.parse.urlencode({
+            "from_date": from_date.isoformat(),
+            "limit": PAGE_SIZE,
+            "offset": page * PAGE_SIZE,
+        })
+        req = urllib.request.Request(
+            f"{api_url.rstrip('/')}/api/v1/transactions/?{query}",
+            headers={
+                "X-API-Key": api_key,
+                # Cloudflare in front of money.markcheli.com 403s the default
+                # `Python-urllib/3.x` UA. Send something innocuous instead.
+                "User-Agent": "daily-report/1.0 (+https://github.com/MCheli/daily-report)",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read())
+        batch = body.get("items", [])
+        items.extend(batch)
+        if len(batch) < PAGE_SIZE or len(items) >= body.get("total", 0):
+            break
+    return items
 
 
 def summarize(*, days: int = 3, api_key: Optional[str] = None) -> dict:
@@ -59,10 +73,9 @@ def summarize(*, days: int = 3, api_key: Optional[str] = None) -> dict:
         return _stub(days=days)
 
     api_url = os.environ.get("TALLIED_API_URL", DEFAULT_API_URL)
-    items = _fetch(api_key, api_url)
-
     today = date.today()
     cutoff = today - timedelta(days=days - 1)
+    items = _fetch(api_key, api_url, from_date=cutoff)
 
     transactions_recent: list[dict] = []
     by_day_total: dict[str, float] = defaultdict(float)
