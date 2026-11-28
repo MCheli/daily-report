@@ -2,7 +2,7 @@
 #    uv pip compile requirements.in -o requirements.txt --python-version 3.12 --python-platform x86_64-manylinux_2_28
 annotated-types==0.8.0
     # via pydantic
-anthropic==2.11.0
+anthropic==2.14.0
     # via -r requirements.in
 anyio==4.15.1
     # via
@@ -42,7 +42,7 @@ httpcore2==2.16.0
     # via httpx2
 httpx2==2.16.0
     # via anthropic
-icalendar==7.3.0
+icalendar==7.3.2
     # via
     #   -r requirements.in
     #   recurring-ical-events
